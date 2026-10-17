@@ -12,7 +12,7 @@ for c in python3 python; do
 done
 if [ -z "$PY" ]; then
   echo "Falta Python 3.8 o superior."
-  [ "$(uname)" = "Darwin" ] && echo "Instálalo desde https://www.python.org/downloads/ o con: brew install python" \
+  [ "$(uname)" = "Darwin" ] && echo "Si macOS abrió una ventana para instalar herramientas de desarrollo, acéptala y, al terminar, vuelve a abrir este archivo. Si no apareció, instala Python desde https://www.python.org/downloads/ o con: brew install python" \
                             || echo "Instálalo con: sudo apt install python3 python3-venv python3-pip"
   exit 1
 fi
