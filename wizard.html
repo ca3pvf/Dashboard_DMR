@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard portable · Configuración inicial</title>
+<style>
+:root{--bg:#0f1720;--card:#17212d;--tx:#e6edf3;--mut:#8b9aaa;--ac:#35d07f;--er:#ff6b6b;--bd:#2a3846}
+@media (prefers-color-scheme:light){:root{--bg:#eef2f6;--card:#fff;--tx:#17212d;--mut:#5b6b7b;--bd:#d4dce4}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.45 system-ui,Segoe UI,Roboto,sans-serif;padding:24px 12px}
+.w{max-width:620px;margin:0 auto;background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:22px}
+h1{margin:0 0 4px;font-size:21px}
+p.s{margin:0 0 18px;color:var(--mut)}
+h2{font-size:14px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);margin:20px 0 8px}
+label{display:block;margin:10px 0 0;font-size:13px;color:var(--mut)}
+input[type=text],input[type=number]{width:100%;margin-top:4px;padding:9px 10px;border-radius:8px;border:1px solid var(--bd);background:transparent;color:var(--tx);font:inherit}
+.r{display:flex;gap:10px}.r>*{flex:1}
+.chk{display:flex;gap:8px;align-items:flex-start;color:var(--tx);font-size:14px;margin-top:12px}
+.hint{font-size:12px;color:var(--mut);margin-top:3px}
+button{margin-top:16px;padding:10px 16px;border-radius:8px;border:0;font:inherit;font-weight:600;cursor:pointer}
+.p{background:var(--ac);color:#06210f}.g{background:transparent;border:1px solid var(--bd);color:var(--tx)}
+#m{margin-top:14px;min-height:20px;font-size:14px}.er{color:var(--er)}.ok{color:var(--ac)}
+.sm{margin-top:8px;padding:6px 10px;font-size:13px}.tabs button{margin-right:6px}.tabs button.on{border-color:var(--ac);color:var(--ac)}
+pre.cmd{background:rgba(127,127,127,.12);border:1px solid var(--bd);border-radius:8px;padding:10px;margin:8px 0 0;font:13px/1.5 ui-monospace,Consolas,monospace;white-space:pre-wrap;word-break:break-all}
+#sshbox{display:none;margin-top:10px;padding:12px;border:1px solid var(--bd);border-radius:10px}
+code{background:rgba(127,127,127,.15);padding:1px 5px;border-radius:4px}
+</style>
+</head>
+<body>
+<div class="w">
+  <h1>Configuración inicial</h1>
+  <p class="s">Solo se pide una vez. Los datos quedan guardados en la carpeta <b>pcbox-data</b>, junto a esta aplicación.</p>
+
+  <h2>Operador</h2>
+  <div class="r">
+    <label>Indicativo *<input type="text" id="call" placeholder="CA3XXX" maxlength="9" autocapitalize="characters"></label>
+    <label>Nombre<input type="text" id="nombre" placeholder="Tu nombre"></label>
+  </div>
+  <div class="r">
+    <label>Ciudad<input type="text" id="ciudad"></label>
+    <label>País<input type="text" id="pais" value="Chile"></label>
+  </div>
+  <div class="r">
+    <label>Latitud *<input type="text" id="lat" placeholder="-33.4500"></label>
+    <label>Longitud *<input type="text" id="lon" placeholder="-70.6700"></label>
+  </div>
+  <div class="hint">Se usa para sismos (distancia) y pasadas de satélites. Usa punto decimal; sur y oeste son negativos.</div>
+  <label>DMR ID personal (7 dígitos, opcional)<input type="text" id="dmr" inputmode="numeric" maxlength="7"></label>
+
+  <h2>Hotspot</h2>
+  <div class="r">
+    <label>IP del hotspot *<input type="text" id="ip" placeholder="192.168.1.100"></label>
+    <label>Nombre<input type="text" id="hsnombre" value="Hotspot 1"></label>
+  </div>
+  <label class="chk"><input type="checkbox" id="ssh"> <span>Activar acceso por SSH (opcional)
+    <div class="hint">Habilita Protocolos MMDVM, Pantalla Hotspot y redes DMR. Sin esto, el resto del dashboard funciona igual. Te mostramos cómo autorizar este equipo; la contraseña del hotspot la escribes tú en tu terminal y el dashboard nunca la ve ni la guarda.</div></span></label>
+  <label id="usrw" style="display:none">Usuario SSH<input type="text" id="usr" value="pi-star"></label>
+  <div id="sshbox">
+    <div class="tabs"><button class="g sm" id="tmac">Mac / Linux</button><button class="g sm" id="twin">Windows (PowerShell)</button></div>
+    <div class="hint" style="margin-top:8px">Pega esto en una terminal de <b>este mismo equipo</b>, una sola vez:</div>
+    <pre class="cmd" id="cmd"></pre>
+    <button class="g sm" id="bc">Copiar comandos</button>
+    <div class="hint" style="margin-top:8px">• Si dice que ya existe una llave, responde <b>n</b>: ya tienes una.<br>
+      • Si dice «Read-only file system», entra al hotspot, ejecuta <code>sudo rpi-rw</code>, repite el comando y al terminar <code>sudo rpi-ro</code>.</div>
+    <button class="g sm" id="bs">Probar SSH</button>
+    <div id="ms" style="margin-top:8px;font-size:14px"></div>
+  </div>
+
+  <button class="g" id="bp">Probar hotspot</button>
+  <button class="p" id="bg">Guardar y abrir el dashboard</button>
+  <div id="m"></div>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+const msg = (t, c) => { $('m').className = c || ''; $('m').textContent = t; };
+let sshOk = false, modo = /Win/i.test(navigator.platform) ? 'win' : 'mac';
+const ipv = () => $('ip').value.trim() || 'IP-DEL-HOTSPOT', usv = () => $('usr').value.trim() || 'pi-star';
+function pintaCmd() {
+  const d = ipv(), u = usv();
+  $('cmd').textContent = modo === 'win'
+    ? 'ssh-keygen -t ed25519\ntype $env:USERPROFILE\\.ssh\\id_ed25519.pub | ssh ' + u + '@' + d + ' "mkdir -p ~/.ssh && chmod 700 ~/.ssh && tr -d \'\\r\' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"'
+    : 'ssh-keygen -t ed25519\nssh-copy-id ' + u + '@' + d;
+  $('tmac').classList.toggle('on', modo !== 'win'); $('twin').classList.toggle('on', modo === 'win');
+}
+const refresco = () => { $('usrw').style.display = $('sshbox').style.display = $('ssh').checked ? 'block' : 'none'; sshOk = false; pintaCmd(); };
+$('ssh').onchange = refresco;
+['ip', 'usr'].forEach(i => $(i).addEventListener('input', () => { sshOk = false; pintaCmd(); }));
+$('tmac').onclick = () => { modo = 'mac'; pintaCmd(); };
+$('twin').onclick = () => { modo = 'win'; pintaCmd(); };
+$('bc').onclick = async () => { try { await navigator.clipboard.writeText($('cmd').textContent); $('bc').textContent = 'Copiado'; } catch (e) { $('bc').textContent = 'Selecciona y copia a mano'; } setTimeout(() => $('bc').textContent = 'Copiar comandos', 1800); };
+$('bs').onclick = async () => {
+  const ip = $('ip').value.trim();
+  if (!ip) { $('ms').className = 'er'; return $('ms').textContent = 'Escribe primero la IP del hotspot.'; }
+  $('ms').className = ''; $('ms').textContent = 'Probando SSH…';
+  try {
+    const r = await (await fetch('/api/portable/ssh-test?ip=' + encodeURIComponent(ip) + '&user=' + encodeURIComponent(usv()))).json();
+    sshOk = !!r.ok; $('ms').className = r.ok ? 'ok' : 'er'; $('ms').textContent = r.mensaje;
+    if (r.comando) { const c = document.createElement('pre'); c.className = 'cmd'; c.textContent = r.comando; $('ms').appendChild(c); }
+  } catch (e) { $('ms').className = 'er'; $('ms').textContent = 'Error de prueba: ' + e; }
+};
+refresco();
+$('bp').onclick = async () => {
+  const ip = $('ip').value.trim();
+  if (!ip) return msg('Escribe la IP del hotspot', 'er');
+  msg('Probando…');
+  try {
+    const r = await (await fetch('/api/portable/probe?ip=' + encodeURIComponent(ip))).json();
+    msg(r.ok ? 'El hotspot responde (' + r.ms + ' ms)' + (r.api ? ' y entrega Last Heard.' : ', pero su API /api/ no respondió.') : 'No responde: ' + (r.error || ''), r.ok ? 'ok' : 'er');
+  } catch (e) { msg('Error de prueba: ' + e, 'er'); }
+};
+$('bg').onclick = async () => {
+  const body = {
+    callsign: $('call').value, nombre: $('nombre').value, ciudad: $('ciudad').value, pais: $('pais').value,
+    lat: $('lat').value, lon: $('lon').value, dmr_id: $('dmr').value,
+    hotspot: { ip: $('ip').value, name: $('hsnombre').value, ssh: $('ssh').checked, user: $('usr').value }
+  };
+  if ($('ssh').checked && !sshOk && !confirm('SSH todavía no pasó la prueba. ¿Guardar igual? (puedes repetir el asistente después con --setup)')) return;
+  msg('Guardando…');
+  let r;
+  try { r = await fetch('/api/portable/setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); }
+  catch (e) { return msg('Error: ' + e, 'er'); }
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) return msg(d.error || 'No se pudo guardar', 'er');
+  msg('Listo. Iniciando el dashboard…', 'ok');
+  const t = setInterval(async () => {
+    try { const q = await fetch('/api/portable/ready', { cache: 'no-store' }); if (q.ok) { clearInterval(t); location.href = '/'; } } catch (e) {}
+  }, 1000);
+};
+</script>
+</body>
+</html>

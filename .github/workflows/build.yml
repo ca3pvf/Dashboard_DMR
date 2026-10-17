@@ -1,0 +1,30 @@
+name: build
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements-portable.txt pyinstaller
+      - name: Build
+        shell: bash
+        run: |
+          SEP=":"; [ "$RUNNER_OS" = "Windows" ] && SEP=";"
+          pyinstaller --onefile --clean --noconfirm --name pcbox-portable \
+            --add-data "services${SEP}services" --add-data "dashboard.html${SEP}." --add-data "wizard.html${SEP}." \
+            --collect-submodules socketio --collect-submodules engineio --collect-all sgp4 \
+            --exclude-module tkinter --exclude-module matplotlib --exclude-module numpy \
+            portable_app.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pcbox-portable-${{ matrix.os }}
+          path: dist/*

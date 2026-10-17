@@ -1,0 +1,7 @@
+flask>=3.0
+requests>=2.31
+psutil>=5.9
+sgp4>=2.23
+python-socketio[client]>=5.10
+websocket-client>=1.6
+pillow>=10.0
