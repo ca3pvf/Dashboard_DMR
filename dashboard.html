@@ -1366,6 +1366,12 @@ return {list:list,render:render,mount:mount,flag:flag}
                     <label style="display:block;margin-top:6px">Tamaño <select id="ft-i-size"></select></label>
                     <div class="identity" style="margin-top:8px"><div class="callsign">@@CALL@@</div></div>
                   </div>
+                  <div>
+                    <b>Botones de las tarjetas</b>
+                    <label style="display:block;margin-top:6px">Fuente <select id="ft-b-fam"></select></label>
+                    <label style="display:block;margin-top:6px">Tamaño <select id="ft-b-size"></select></label>
+                    <button type="button" class="lh-chip ft-prev-btn" style="margin-top:8px">Vista previa del botón</button>
+                  </div>
                 </div>
                 <button type="button" class="lh-chip" id="ft-reset" style="margin-top:10px">Restablecer tipografía</button>
                 <p class="ap-nota">Se aplica al instante y se guarda en pcbox (igual en todos tus equipos).</p>
@@ -1459,7 +1465,7 @@ return {list:list,render:render,mount:mount,flag:flag}
 (function(){
   const BASE = 'http://' + location.hostname + ':5013/api/store';
   const CLAVES = ['rid_timeout','pcbox-lh-filtros','pcbox-lh-mindur','pcbox-rk-periodo','pcbox-rk-modo',
-    'pcbox-qsl-design','pcbox-qsl-bg','pcbox-sys-local-loc','pcbox-sys-wx-loc','pcbox-sys-wx-h1','pcbox-sys-wx-h2','pcbox-fuente-titulos','pcbox-fuente-indicativo','pcbox-hs-skin','pcbox-wa-tel'];
+    'pcbox-qsl-design','pcbox-qsl-bg','pcbox-sys-local-loc','pcbox-sys-wx-loc','pcbox-sys-wx-h1','pcbox-sys-wx-h2','pcbox-fuente-titulos','pcbox-fuente-indicativo','pcbox-fuente-botones','pcbox-hs-skin','pcbox-wa-tel'];
   const QSOS = 'pcbox-qsl-qsos', ID = 'pcbox-identidad', SECRETOS = ['hotspotPass','bmPass'];
   const ls = window.localStorage;
   const _get = Storage.prototype.getItem, _set = Storage.prototype.setItem, _rem = Storage.prototype.removeItem;
@@ -4128,7 +4134,7 @@ setCfgTab(localStorage.getItem('pcbox-config-tab') || 'sistema');
     if(!lista.length){ cont.innerHTML = '<div class="lh-empty">Sin grabaciones' + ($('rec-q').value ? ' para esa búsqueda' : ' todavía (pulsa ↻ Sincronizar)') + '</div>'; return; }
     cont.innerHTML = lista.map((r, i) => '<div data-i="' + i + '" style="display:flex;gap:8px;align-items:center;padding:4px 6px;cursor:pointer;border-bottom:1px solid var(--border);' +
       (r.f === actual ? 'background:rgba(199,125,255,.2);' : '') + '"><span>' + (r.fav ? '★' : '·') + '</span><span style="font-family:var(--mono)">' + fecha(r.ts) +
-      '</span><span style="flex:1">' + esc(nombre(r)) + ' → TG ' + esc(r.tg) + '</span><span style="opacity:.75">' + r.dur + ' s' + (r.mp3 ? ' · mp3' : '') + '</span></div>').join('');
+      '</span><span style="flex:1">' + esc(nombre(r)) + ' → TG ' + esc(r.tg) + '</span><span style="opacity:.75">' + r.dur + ' s' + (r.mp3 ? ' <span title="MP3 generado" style="color:var(--ok);font-weight:700">✔</span>' : '') + '</span></div>').join('');
   }
   function abrir(i){
     const r = lista[i]; if(!r) return;
@@ -4217,13 +4223,13 @@ setCfgTab(localStorage.getItem('pcbox-config-tab') || 'sistema');
     maquina: ['Máquina de escribir', '"Courier New",Courier,monospace'],
     verdana: ['Verdana', 'Verdana,Geneva,sans-serif']
   };
-  const LS_T = 'pcbox-fuente-titulos', LS_I = 'pcbox-fuente-indicativo';
-  const TAM_T = ['', 11, 12, 13, 14, 16, 18, 20, 24], TAM_I = ['', 18, 22, 26, 30, 36, 44];
+  const LS_T = 'pcbox-fuente-titulos', LS_I = 'pcbox-fuente-indicativo', LS_B = 'pcbox-fuente-botones';
+  const TAM_T = ['', 11, 12, 13, 14, 16, 18, 20, 24], TAM_I = ['', 18, 22, 26, 30, 36, 44], TAM_B = ['', 10, 11, 12, 13, 14, 16];
   const $ = id => document.getElementById(id);
   const leer = k => { try{ return JSON.parse(localStorage.getItem(k) || '{}') || {}; }catch(e){ return {}; } };
   const estilo = document.createElement('style'); estilo.id = 'fuentes-css'; document.head.appendChild(estilo);
   function aplicar(){
-    const t = leer(LS_T), i = leer(LS_I);
+    const t = leer(LS_T), i = leer(LS_I), b = leer(LS_B);
     const fam = k => (FUENTES[k] && FUENTES[k][1]) || '';
     const px = v => /^\d{1,2}$/.test(String(v || '')) ? v : '';
     let css = '';
@@ -4231,18 +4237,21 @@ setCfgTab(localStorage.getItem('pcbox-config-tab') || 'sistema');
     if(px(t.size)) css += '.card-title{font-size:' + px(t.size) + 'px !important;}';
     if(fam(i.fam)) css += '.identity .callsign{font-family:' + fam(i.fam) + ' !important;}';
     if(px(i.size)) css += '.identity .callsign{font-size:' + px(i.size) + 'px !important;}';
+    const SB = '.card button:not(.card-x),.card .lh-chip,.card .qsl-btn,.card .qsl-mini-btn,.ft-prev-btn';
+    if(fam(b.fam)) css += SB + '{font-family:' + fam(b.fam) + ' !important;}';
+    if(px(b.size)) css += SB + '{font-size:' + px(b.size) + 'px !important;}';
     estilo.textContent = css;
   }
   const famOpts = Object.keys(FUENTES).map(k => '<option value="' + k + '">' + FUENTES[k][0] + '</option>').join('');
-  [['ft-t-fam', LS_T, 'fam'], ['ft-t-size', LS_T, 'size'], ['ft-i-fam', LS_I, 'fam'], ['ft-i-size', LS_I, 'size']].forEach(d => {
+  [['ft-t-fam', LS_T, 'fam'], ['ft-t-size', LS_T, 'size'], ['ft-i-fam', LS_I, 'fam'], ['ft-i-size', LS_I, 'size'], ['ft-b-fam', LS_B, 'fam'], ['ft-b-size', LS_B, 'size']].forEach(d => {
     const sel = $(d[0]); if(!sel) return;
-    sel.innerHTML = d[2] === 'fam' ? famOpts : (d[1] === LS_T ? TAM_T : TAM_I).map(v => '<option value="' + v + '">' + (v ? v + ' px' : 'Predeterminado') + '</option>').join('');
+    sel.innerHTML = d[2] === 'fam' ? famOpts : (d[1] === LS_T ? TAM_T : d[1] === LS_B ? TAM_B : TAM_I).map(v => '<option value="' + v + '">' + (v ? v + ' px' : 'Predeterminado') + '</option>').join('');
     sel.value = String(leer(d[1])[d[2]] || '');
     sel.addEventListener('change', () => { const o = leer(d[1]); o[d[2]] = sel.value; localStorage.setItem(d[1], JSON.stringify(o)); aplicar(); });
   });
   $('ft-reset').addEventListener('click', () => {
-    localStorage.setItem(LS_T, '{}'); localStorage.setItem(LS_I, '{}');
-    ['ft-t-fam', 'ft-t-size', 'ft-i-fam', 'ft-i-size'].forEach(id => { $(id).value = ''; });
+    localStorage.setItem(LS_T, '{}'); localStorage.setItem(LS_I, '{}'); localStorage.setItem(LS_B, '{}');
+    ['ft-t-fam', 'ft-t-size', 'ft-i-fam', 'ft-i-size', 'ft-b-fam', 'ft-b-size'].forEach(id => { $(id).value = ''; });
     aplicar();
   });
   aplicar(); setTimeout(aplicar, 2500);
@@ -5744,5 +5753,7 @@ window.pcboxWa = (function(){
           descargar: descargar, descargarBlob: descargarBlob, qso: qso};
 })();
 </script>
+<div id="pcbox-creditos">Creado y desarrollado por CA3PVF</div>
+<style>#pcbox-creditos{position:fixed;left:0;right:0;bottom:0;z-index:40;text-align:center;padding:6px 10px;font-size:.72em;letter-spacing:.3px;color:var(--text-dim,#8a96a3);background:var(--panel,#10161d);border-top:1px solid var(--border,#26303b);pointer-events:none}body{padding-bottom:30px;box-sizing:border-box}.layout{min-height:calc(100vh - 30px)}</style>
 </body>
 </html>
