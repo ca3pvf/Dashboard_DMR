@@ -53,6 +53,7 @@ MODULOS = [
     ("hscard", "hscard_service.py"),
     ("sat", "sat_service.py"),
     ("sismos", "sismos_service.py"),
+    ("aprs", "aprs_service.py"),
     ("salud", "salud_lite.py"),
 ]
 
@@ -60,7 +61,7 @@ MODULOS = [
 def _dependencias():
     """Nunca se ejecuta. Declara los modulos que usan los servicios de services/ (se cargan con exec,
     asi que PyInstaller no los ve): sin esta lista el ejecutable saldria sin ellos."""
-    import base64, collections, csv, datetime, email.message, email.utils, io, math, smtplib, sqlite3, ssl  # noqa
+    import base64, collections, csv, datetime, email.message, email.utils, io, math, smtplib, sqlite3, ssl, unicodedata  # noqa
     import subprocess, xml.etree.ElementTree, requests, psutil, sgp4.api, socketio, engineio, websocket  # noqa
 
 
@@ -85,6 +86,8 @@ ARRANQUE = {
     "contactos": lambda m: (m.db().close(), hilo(m._auto_sync)),
     "sat": lambda m: hilo(m.bucle),
     "sismos": lambda m: (hilo(m.bucle), hilo(m.bucle_usgs)),
+    "aprs": lambda m: (m.init_db(), m.cargar_config(), m.bot_rearmar(),
+                       [hilo(f) for f in (m.conectar_loop, m.reintentos_loop, m.baliza_loop)]),
     "salud": lambda m: hilo(m.bucle),
 }
 
@@ -379,6 +382,74 @@ def html_dashboard(cfg):
     return h
 
 
+def _repo_y_rama():
+    try:
+        t = (RES / "actualizar.py").read_text(encoding="utf-8")
+        return re.search(r'(?m)^REPO = "([^"]+)"', t).group(1), re.search(r'(?m)^RAMA = "([^"]+)"', t).group(1)
+    except Exception:
+        return None, "main"
+
+
+def _version_local():
+    try:
+        v = (RES / "VERSION").read_text(encoding="utf-8").strip()
+        if v:
+            return v
+    except OSError:
+        pass
+    return VERSION
+
+
+def _num(v):
+    return tuple(int(x) for x in re.findall(r"\d+", str(v))[:4]) or (0,)
+
+
+_UPD = {"t": 0.0, "r": None}
+
+
+def revisar_actualizacion(fresco=False):
+    """Compara el archivo VERSION de esta carpeta con el publicado en GitHub (repositorio publico)."""
+    if not fresco and _UPD["r"] and time.time() - _UPD["t"] < 6 * 3600:
+        return _UPD["r"]
+    repo, rama = _repo_y_rama()
+    r = {"version": _version_local(), "repo": repo, "ultima": None, "hay_nueva": False, "error": None,
+         "es_git": (RES / ".git").is_dir(), "congelado": FROZEN}
+    if not repo or repo.startswith("USUARIO/"):
+        r["error"] = "El actualizador no está configurado (REPO en actualizar.py)"
+        return r
+    try:
+        req = urllib.request.Request("https://raw.githubusercontent.com/%s/%s/VERSION" % (repo, rama),
+                                     headers={"User-Agent": "pcbox-actualizador"})
+        with urllib.request.urlopen(req, timeout=10) as f:
+            ult = f.read(64).decode("utf-8", "replace").strip()
+        if not re.fullmatch(r"\d+(\.\d+){0,3}", ult):
+            raise ValueError("el archivo VERSION publicado no es válido")
+        r["ultima"] = ult
+        r["hay_nueva"] = _num(ult) > _num(r["version"])
+        _UPD.update(t=time.time(), r=r)
+    except Exception as e:
+        if getattr(e, "code", None) == 404:
+            r["error"] = "No se encontró la versión publicada (404). El repositorio debe ser público y tener un archivo VERSION."
+        else:
+            r["error"] = "Sin conexión con GitHub (%s)" % e.__class__.__name__
+    return r
+
+
+def aplicar_actualizacion():
+    if FROZEN:
+        return {"ok": False, "error": "Esta versión empaquetada no se actualiza sola: descarga la nueva desde GitHub."}
+    if (RES / ".git").is_dir():
+        return {"ok": False, "error": "Esta carpeta es un repositorio git: actualiza con «git pull»."}
+    try:
+        p = subprocess.run([sys.executable, str(RES / "actualizar.py")], capture_output=True, text=True,
+                           timeout=180, cwd=str(RES))
+    except Exception as e:
+        return {"ok": False, "error": "No se pudo ejecutar el actualizador (%s)" % e.__class__.__name__}
+    _UPD["r"] = None
+    salida = ((p.stdout or "") + (p.stderr or "")).strip()[-400:]
+    return {"ok": p.returncode == 0, "salida": salida or "Ya tienes lo último publicado."}
+
+
 def crear_app(cargados, cfg):
     app = Flask("pcbox_portable")
     app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024
@@ -404,6 +475,10 @@ def crear_app(cargados, cfg):
     app.add_url_rule("/api/portable/info", "portable.info",
                      lambda: jsonify({"version": VERSION, "modulos": sorted(cargados), "ssh": app.config["SSH_ON"],
                                       "indicativo": cfg["callsign"], "datos": app.config["DATA_DIR"]}))
+    app.add_url_rule("/api/portable/update-check", "portable.upd_check",
+                     lambda: jsonify(revisar_actualizacion(request.args.get("fresh") == "1")))
+    app.add_url_rule("/api/portable/update-apply", "portable.upd_apply",
+                     lambda: jsonify(aplicar_actualizacion()), methods=["POST"])
     return app
 
 

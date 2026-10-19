@@ -196,6 +196,28 @@ def api_usgs():
                         "calculado": US["calc"], "error": US["error"]})
 
 
+_REF = {"t": 0.0}
+_REF_LOCK = threading.Lock()
+
+
+@app.route("/api/sismos/refresh", methods=["POST"])
+def api_refresh():
+    """Consulta CSN y USGS ahora mismo (minimo 15 s entre consultas, para no abusar de las fuentes)."""
+    with _REF_LOCK:
+        if time.time() - _REF["t"] < 15:
+            return jsonify({"ok": True, "omitido": "consulta reciente"})
+        _REF["t"] = time.time()
+    res = {}
+    for nombre, f in (("csn", ciclo), ("usgs", ciclo_usgs)):
+        try:
+            f()
+            res[nombre] = "ok"
+        except Exception as e:
+            res[nombre] = str(e)[:80]
+            print("sismos: refresh %s fallo: %s" % (nombre, e), flush=True)
+    return jsonify(dict(res, ok=True))
+
+
 if __name__ == "__main__":
     threading.Thread(target=bucle, daemon=True).start()
     threading.Thread(target=bucle_usgs, daemon=True).start()

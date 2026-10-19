@@ -4,7 +4,7 @@ y si no hay internet o falla, no pasa nada: el dashboard arranca igual con la ve
 Antes de usarlo, cambia REPO por 'tu-usuario/tu-repositorio'."""
 import hashlib, io, json, os, sys, urllib.request, zipfile
 
-REPO = "USUARIO/pcbox-dashboard"
+REPO = "ca3pvf/Dashboard_DMR"
 RAMA = "main"
 AQUI = os.path.dirname(os.path.abspath(__file__))
 SALTAR = ("pcbox-data/", ".venv", ".git/", "iniciar.bat", "iniciar.command", ".version", "dist/", "build/")
@@ -15,6 +15,8 @@ def pedir(url, t=20):
 
 
 def main():
+    if os.path.isdir(os.path.join(AQUI, ".git")):
+        return 0                                            # copia de desarrollo (git): se actualiza con git pull
     if REPO.startswith("USUARIO/"):
         return 0                                            # sin configurar: no se actualiza
     marca = os.path.join(AQUI, ".version")

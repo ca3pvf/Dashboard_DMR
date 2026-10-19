@@ -562,7 +562,7 @@ return {list:list,render:render,mount:mount,flag:flag}
         <div class="topbar-sub" id="fecha-utc">--</div>
       </div>
       <div class="topbar-item">
-        <div class="topbar-label" id="clima-lugar">CLIMA — BUIN</div>
+        <div class="topbar-label" id="clima-lugar">CLIMA</div>
         <div class="topbar-value" id="clima-actual">--°C</div>
         <div class="topbar-sub" id="clima-desc">Cargando...</div>
         <div class="topbar-sub" id="clima-pres" style="color:var(--text);font-weight:600">-- hPa</div>
@@ -792,7 +792,7 @@ return {list:list,render:render,mount:mount,flag:flag}
       <section class="card" id="sismos" style="--accent:#e5534b">
         <div class="card-head">
           <span class="card-title">SISMOS</span>
-          <span class="card-meta"><button type="button" class="lh-chip" id="sis-cfg-btn" title="Configurar alerta">⚙</button> <button type="button" class="lh-chip" id="sis-f-csn">CSN</button> <button type="button" class="lh-chip" id="sis-f-chile">USGS Chile</button> <button type="button" class="lh-chip" id="sis-f-mundo">USGS Mundo</button> <span id="sis-meta">--</span></span>
+          <span class="card-meta"><button type="button" class="lh-chip" id="sis-refresh" title="Actualizar sismos ahora">⟳</button> <button type="button" class="lh-chip" id="sis-cfg-btn" title="Configurar alerta">⚙</button> <button type="button" class="lh-chip" id="sis-f-csn">CSN</button> <button type="button" class="lh-chip" id="sis-f-chile">USGS Chile</button> <button type="button" class="lh-chip" id="sis-f-mundo">USGS Mundo</button> <span id="sis-meta">--</span></span>
         </div>
         <div class="card-body" style="padding:10px 14px;overflow:auto;">
           <div id="sis-cfg" style="display:none;margin-bottom:10px;">
@@ -1102,6 +1102,7 @@ return {list:list,render:render,mount:mount,flag:flag}
             <button class="cfg-tab" data-cfg="contactos">Contactos</button>
             <button class="cfg-tab" data-cfg="pantalla">Pantalla</button>
             <button class="cfg-tab" data-cfg="apariencia">Apariencia</button>
+            <button class="cfg-tab" data-cfg="actualizaciones">Actualizaciones</button>
           </div>
 
           <div class="cfg-panel" id="cfg-panel-sistema">
@@ -1302,10 +1303,13 @@ return {list:list,render:render,mount:mount,flag:flag}
                 <label style="flex:1 1 100%">Palabras o frases válidas (una por línea) <textarea id="bot-palabras" rows="3" style="width:100%"></textarea></label>
               </div>
               <div class="qsl-field-row">
-                <label style="flex:1 1 100%">Respuesta al participante nuevo <input type="text" id="bot-ok" autocomplete="off" style="width:100%"></label>
+                <label style="flex:1 1 100%">Respuesta al participante nuevo (si ya tengo su correo) <input type="text" id="bot-ok" autocomplete="off" style="width:100%"></label>
               </div>
               <div class="qsl-field-row">
                 <label style="flex:1 1 100%">Respuesta si ya estaba registrado <input type="text" id="bot-dup" autocomplete="off" style="width:100%"></label>
+                <label style="flex:1 1 100%">Pregunta si no tengo su correo <input type="text" id="bot-preg" autocomplete="off" style="width:100%"></label>
+                <label style="flex:1 1 100%">Respuesta al recibir su correo ({mail} = correo parcialmente oculto) <input type="text" id="bot-mailok" autocomplete="off" style="width:100%"></label>
+                <label style="flex:1 1 100%">Respuesta si dice NO ({fecha} = fecha de hoy) <input type="text" id="bot-no" autocomplete="off" style="width:100%"></label>
               </div>
               <div class="qsl-section-label" style="margin-top:8px">QSL del concurso</div>
               <div class="qsl-field-row">
@@ -1375,6 +1379,21 @@ return {list:list,render:render,mount:mount,flag:flag}
                 </div>
                 <button type="button" class="lh-chip" id="ft-reset" style="margin-top:10px">Restablecer tipografía</button>
                 <p class="ap-nota">Se aplica al instante y se guarda en pcbox (igual en todos tus equipos).</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="cfg-panel" id="cfg-panel-actualizaciones">
+            <div class="cfg-grid">
+              <div class="cfg-box" style="grid-column:1 / -1;">
+                <div class="cfg-box-title">Actualizaciones</div>
+                <div id="upd-estado" style="line-height:1.7">Comprobando…</div>
+                <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+                  <button type="button" class="qsl-btn" id="upd-buscar">Buscar ahora</button>
+                  <button type="button" class="qsl-btn" id="upd-aplicar" style="display:none">Actualizar ahora</button>
+                </div>
+                <div id="upd-msg" class="qsl-hint" style="margin-top:8px"></div>
+                <p class="qsl-hint" style="margin-top:10px">Se revisa solo cada 6 horas. Actualizar no toca tu configuración ni tus datos; para usar la versión nueva, cierra el dashboard y ábrelo otra vez.</p>
               </div>
             </div>
           </div>
@@ -2629,6 +2648,7 @@ async function botCargar(){
     set('bot-ini', c.inicio || ''); set('bot-fin', c.fin || '');
     set('bot-palabras', (c.palabras || []).join('\n'));
     set('bot-ok', c.resp_ok || ''); set('bot-dup', c.resp_dup || '');
+    set('bot-preg', c.resp_pregunta || ''); set('bot-mailok', c.resp_mail_ok || ''); set('bot-no', c.resp_no || '');
     if(act !== document.getElementById('bot-auto')) document.getElementById('bot-auto').checked = !!c.auto;
     set('bot-qfreq', c.q_freq || ''); set('bot-qband', c.q_band || ''); set('bot-qmode', c.q_mode || '');
     set('bot-qrs', c.q_rst_s || ''); set('bot-qrr', c.q_rst_r || ''); set('bot-qcom', c.q_comments || '');
@@ -2646,6 +2666,7 @@ document.getElementById('bot-guardar').addEventListener('click', async () => {
       body: JSON.stringify({enabled: document.getElementById('bot-on').checked, nombre: v('bot-nombre'),
         palabras: v('bot-palabras'), inicio: v('bot-ini'), fin: v('bot-fin'), resp_ok: v('bot-ok'),
         resp_dup: v('bot-dup'), max_por_dia: v('bot-max'),
+        resp_pregunta: v('bot-preg'), resp_mail_ok: v('bot-mailok'), resp_no: v('bot-no'),
         auto: document.getElementById('bot-auto').checked, q_freq: v('bot-qfreq'), q_band: v('bot-qband'),
         q_mode: v('bot-qmode'), q_rst_s: v('bot-qrs'), q_rst_r: v('bot-qrr'), q_comments: v('bot-qcom')})});
     const d = await r.json();
@@ -3766,6 +3787,62 @@ function setCfgTab(cat){
 cfgTabs.forEach(tab => tab.addEventListener('click', () => setCfgTab(tab.dataset.cfg)));
 setCfgTab(localStorage.getItem('pcbox-config-tab') || 'sistema');
 
+/* ---------- ACTUALIZACIONES (version portable) ---------- */
+(function(){
+  const API = 'http://' + location.hostname + ':5009/api/portable/';
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  let R = null;
+  function punto(on){
+    const b = document.querySelector('.nav button[data-view="config"]'); if(!b) return;
+    let p = document.getElementById('upd-punto');
+    if(on && !p){
+      p = document.createElement('span'); p.id = 'upd-punto'; p.title = 'Hay una versión nueva';
+      p.style.cssText = 'display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--amber);margin-left:8px;box-shadow:0 0 6px var(--amber)';
+      b.appendChild(p);
+    }else if(!on && p){ p.remove(); }
+  }
+  function pintar(){
+    const e = $('upd-estado'), ap = $('upd-aplicar'); if(!e) return;
+    ap.style.display = 'none';
+    if(!R){ e.textContent = 'Comprobando…'; return; }
+    if(R.no_portable){ e.textContent = 'Esta función solo está disponible en la versión portable (la que se descarga de GitHub).'; punto(false); return; }
+    let h = 'Versión instalada: <b>' + esc(R.version) + '</b>';
+    if(R.ultima) h += ' · Última publicada: <b>' + esc(R.ultima) + '</b>';
+    if(R.error) h += '<br><span style="color:var(--amber)">' + esc(R.error) + '</span>';
+    else if(R.hay_nueva){
+      h += '<br><span style="color:var(--green)">Hay una versión nueva disponible.</span>';
+      if(R.es_git) h += ' Esta carpeta es un repositorio git: actualiza con «git pull».';
+      else if(R.congelado) h += ' Descárgala desde GitHub.';
+      else ap.style.display = '';
+    }else h += '<br>Estás al día.';
+    e.innerHTML = h;
+    punto(!!(R.hay_nueva && !R.error));
+  }
+  async function revisar(fresco){
+    try{
+      const r = await fetch(API + 'update-check' + (fresco ? '?fresh=1' : ''));
+      if(!r.ok) throw new Error('no');
+      R = await r.json();
+    }catch(e){ R = {no_portable: true}; }
+    pintar();
+  }
+  const b1 = $('upd-buscar'), b2 = $('upd-aplicar');
+  if(b1) b1.addEventListener('click', async () => { $('upd-msg').textContent = 'Buscando…'; await revisar(true); $('upd-msg').textContent = ''; });
+  if(b2) b2.addEventListener('click', async () => {
+    if(!confirm('Se descargará la última versión desde GitHub. Tu configuración y tus datos no se tocan. ¿Continuar?')) return;
+    b2.disabled = true; $('upd-msg').textContent = 'Actualizando…';
+    try{
+      const r = await (await fetch(API + 'update-apply', {method: 'POST'})).json();
+      $('upd-msg').textContent = r.ok ? ((r.salida || 'Listo.') + ' Cierra el dashboard y ábrelo de nuevo para usar la versión nueva.') : (r.error || r.salida || 'No se pudo actualizar.');
+    }catch(e){ $('upd-msg').textContent = 'No se pudo actualizar.'; }
+    b2.disabled = false;
+  });
+  setTimeout(() => { if(!document.hidden) revisar(false); }, 8000);
+  setInterval(() => { if(!document.hidden) revisar(false); }, 6 * 3600 * 1000);
+  revisar(false);
+})();
+
 /* ---------- BARRA SUPERIOR FIJA: alto de la barra lateral en móvil ---------- */
 (function(){
   const sb = document.querySelector('.sidebar');
@@ -3900,6 +3977,17 @@ setCfgTab(localStorage.getItem('pcbox-config-tab') || 'sistema');
     ['mousedown', 'pointerdown', 'touchstart'].forEach(ev => b.addEventListener(ev, e => e.stopPropagation()));
     b.addEventListener('click', () => { fuente = k; localStorage.setItem(LSK, k); pintar(); cargar(); });
   });
+  const bRef = $('sis-refresh');
+  if(bRef){
+    ['mousedown', 'pointerdown', 'touchstart'].forEach(ev => bRef.addEventListener(ev, e => e.stopPropagation()));
+    bRef.addEventListener('click', async () => {
+      if(bRef.disabled) return;
+      bRef.disabled = true; bRef.textContent = '…';
+      try{ await fetch(API + '/refresh', {method: 'POST'}); }catch(e){}
+      await cargar();
+      bRef.textContent = '⟳'; bRef.disabled = false;
+    });
+  }
   setInterval(cargar, 60000);
   document.addEventListener('visibilitychange', () => { if(!document.hidden) cargar(); });
   pintar(); cargar();
