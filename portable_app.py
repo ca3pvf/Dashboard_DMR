@@ -30,7 +30,7 @@ from pathlib import Path
 from flask import Flask, Response, jsonify, request
 from werkzeug.serving import make_server
 
-VERSION = "1.1"
+VERSION = "1.1.2"
 FROZEN = getattr(sys, "frozen", False)
 RES = Path(getattr(sys, "_MEIPASS", None) or Path(__file__).resolve().parent)      # codigo y recursos
 EXE_DIR = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent
