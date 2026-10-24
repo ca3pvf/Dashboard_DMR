@@ -152,6 +152,9 @@ a{color:inherit;}
 .topbar-value.green{color:var(--green);text-shadow:0 0 8px rgba(var(--green-rgb),0.3);}
 .topbar-value.amber{color:var(--amber);text-shadow:0 0 8px rgba(var(--amber-rgb),0.3);}
 .topbar-sub{font-size:0.65em;color:var(--text-dim);margin-top:2px;}
+.wx-row{display:flex;align-items:center;justify-content:center;gap:8px;}
+.wx-ico svg{width:34px;height:34px;display:block;}
+.wx-ico:empty{display:none;}
 
 /* ---------- GRID DE TARJETAS ---------- */
 .grid{
@@ -498,6 +501,8 @@ return {list:list,render:render,mount:mount,flag:flag}
   .topbar-item{min-width:0;flex:1 1 0;padding:6px 3px;}
   .topbar-value{font-size:0.82em;}
   .topbar-sub{display:none;}
+  .wx-ico svg{width:22px;height:22px;}
+  .wx-row{gap:4px;}
   .topbar-label{font-size:0.55em;margin-bottom:1px;}
 }
 #sat-banner{position:fixed;top:0;left:0;right:0;z-index:1000;display:none;padding:12px 48px 12px 16px;text-align:center;font-weight:700;
@@ -563,18 +568,18 @@ return {list:list,render:render,mount:mount,flag:flag}
       </div>
       <div class="topbar-item">
         <div class="topbar-label" id="clima-lugar">CLIMA</div>
-        <div class="topbar-value" id="clima-actual">--°C</div>
+        <div class="wx-row"><span class="wx-ico" id="clima-ico"></span><div class="topbar-value" id="clima-actual">--°C</div></div>
         <div class="topbar-sub" id="clima-desc">Cargando...</div>
         <div class="topbar-sub" id="clima-pres" style="color:var(--text);font-weight:600">-- hPa</div>
       </div>
       <div class="topbar-item">
         <div class="topbar-label">+2H</div>
-        <div class="topbar-value" id="clima-2h">--°C</div>
+        <div class="wx-row"><span class="wx-ico" id="clima-2h-ico"></span><div class="topbar-value" id="clima-2h">--°C</div></div>
         <div class="topbar-sub" id="clima-2h-hora">--</div>
       </div>
       <div class="topbar-item">
         <div class="topbar-label">+12H</div>
-        <div class="topbar-value" id="clima-12h">--°C</div>
+        <div class="wx-row"><span class="wx-ico" id="clima-12h-ico"></span><div class="topbar-value" id="clima-12h">--°C</div></div>
         <div class="topbar-sub" id="clima-12h-hora">--</div>
       </div>
     </div>
@@ -698,6 +703,7 @@ return {list:list,render:render,mount:mount,flag:flag}
           <div class="lh-filters">
             <button class="lh-chip" data-aprs-tab="est">Estaciones</button>
             <button class="lh-chip" data-aprs-tab="msg">Mensajes <span id="aprs-badge"></span></button>
+            <button class="lh-chip" id="aprs-bot-btn" title="Abrir la configuración del bot de concurso">Bot concurso: <span id="aprs-bot-est">--</span></button>
             <span style="display:inline-block;width:14px"></span>
             <button class="lh-chip" id="aprs-bal">Baliza: --</button>
             <label style="font-size:0.85em">cada <input type="number" min="10" step="5" id="aprs-int" style="width:60px"> min</label>
@@ -1303,13 +1309,13 @@ return {list:list,render:render,mount:mount,flag:flag}
                 <label style="flex:1 1 100%">Palabras o frases válidas (una por línea) <textarea id="bot-palabras" rows="3" style="width:100%"></textarea></label>
               </div>
               <div class="qsl-field-row">
-                <label style="flex:1 1 100%">Respuesta al participante nuevo (si ya tengo su correo) <input type="text" id="bot-ok" autocomplete="off" style="width:100%"></label>
-              </div>
-              <div class="qsl-field-row">
-                <label style="flex:1 1 100%">Respuesta si ya estaba registrado <input type="text" id="bot-dup" autocomplete="off" style="width:100%"></label>
-                <label style="flex:1 1 100%">Pregunta si no tengo su correo <input type="text" id="bot-preg" autocomplete="off" style="width:100%"></label>
-                <label style="flex:1 1 100%">Respuesta al recibir su correo ({mail} = correo parcialmente oculto) <input type="text" id="bot-mailok" autocomplete="off" style="width:100%"></label>
-                <label style="flex:1 1 100%">Respuesta si dice NO ({fecha} = fecha de hoy) <input type="text" id="bot-no" autocomplete="off" style="width:100%"></label>
+                <label style="flex:0 1 calc(50% - 50px);min-width:240px">Respuesta al participante nuevo (si ya tengo su correo) <textarea id="bot-ok" class="bot-msg" rows="1" autocomplete="off" spellcheck="false"></textarea></label>
+                <label style="flex:0 1 calc(50% - 50px);min-width:240px">Respuesta si ya estaba registrado <textarea id="bot-dup" class="bot-msg" rows="1" autocomplete="off" spellcheck="false"></textarea></label>
+                <label style="flex:0 1 calc(50% - 50px);min-width:240px">Pregunta si no tengo su correo <textarea id="bot-preg" class="bot-msg" rows="1" autocomplete="off" spellcheck="false"></textarea></label>
+                <label style="flex:0 1 calc(50% - 50px);min-width:240px">Respuesta al recibir su correo ({mail} = correo parcialmente oculto) <textarea id="bot-mailok" class="bot-msg" rows="1" autocomplete="off" spellcheck="false"></textarea></label>
+                <label style="flex:0 1 calc(50% - 50px);min-width:240px">Respuesta si dice NO ({fecha} = fecha de hoy) <textarea id="bot-no" class="bot-msg" rows="1" autocomplete="off" spellcheck="false"></textarea></label>
+                <label style="flex:0 1 calc(50% - 50px);min-width:240px">Respuesta si la palabra es incorrecta ({clave} = la clave correcta) <textarea id="bot-mal" class="bot-msg" rows="1" autocomplete="off" spellcheck="false"></textarea></label>
+                <label style="flex:0 1 calc(50% - 50px);min-width:240px">Respuesta si está fuera de fecha/hora ({inicio} y {fin} = fechas del concurso) <textarea id="bot-fuera" class="bot-msg" rows="1" autocomplete="off" spellcheck="false"></textarea></label>
               </div>
               <div class="qsl-section-label" style="margin-top:8px">QSL del concurso</div>
               <div class="qsl-field-row">
@@ -1422,6 +1428,12 @@ return {list:list,render:render,mount:mount,flag:flag}
                 <input type="text" id="ct-pais" placeholder="País" style="width:110px">
                 <button id="ct-guardar">Guardar</button>
                 <span class="nx-sm" id="ct-msg"></span>
+              </div>
+              <style>#ct-body a.lh-qrz{color:inherit;text-decoration:inherit}#ct-body a.lh-qrz:hover{text-decoration:underline}</style>
+              <div style="margin-bottom:10px">
+                <div class="qsl-hint" style="margin:0 0 4px">Pegar datos copiados de qrz.com (primera línea: indicativo y país; luego nombre, dirección y «Email: …»)</div>
+                <textarea id="ct-pegar" rows="6" style="width:100%" placeholder="CA3PVF Chile&#10;Nombre Apellido&#10;Dirección&#10;Ciudad&#10;Chile&#10;&#10;Email: correo@ejemplo.com"></textarea>
+                <button id="ct-pegar-ok">Interpretar y agregar</button> <span class="nx-sm" id="ct-pegar-msg"></span>
               </div>
               <div style="max-height:360px;overflow:auto"><table style="width:100%;border-collapse:collapse"><tbody id="ct-body"></tbody></table></div>
               <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
@@ -1805,7 +1817,65 @@ setInterval(tickClocks, 1000); tickClocks();
 const CODIGOS = {0:"Despejado",1:"Mayormente despejado",2:"Parcialmente nublado",3:"Nublado",
   45:"Niebla",48:"Niebla escarchada",51:"Llovizna leve",53:"Llovizna",55:"Llovizna densa",
   61:"Lluvia leve",63:"Lluvia",65:"Lluvia fuerte",71:"Nieve leve",73:"Nieve",75:"Nieve fuerte",
-  80:"Chubascos",81:"Chubascos",82:"Chubascos fuertes",95:"Tormenta",96:"Tormenta con granizo"};
+  80:"Chubascos",81:"Chubascos",82:"Chubascos fuertes",95:"Tormenta",96:"Tormenta con granizo",56:"Llovizna helada",57:"Llovizna helada densa",66:"Lluvia helada",67:"Lluvia helada fuerte",77:"Granos de nieve",85:"Chubascos de nieve",86:"Chubascos de nieve fuertes",99:"Tormenta con granizo fuerte"};
+function wxIcono(code, dia){
+  code = Number(code);
+  const dd = !(dia === 0 || dia === false);
+  const SOL = '<g><circle cx="@X@" cy="@Y@" r="@R@" fill="#ffc933"/></g>';
+  const sol = (x, y, r) => {
+    let rays = '';
+    for(let i = 0; i < 8; i++){
+      const a = i * Math.PI / 4, c = Math.cos(a), s = Math.sin(a);
+      rays += `<line x1="${(x + c*(r+2)).toFixed(1)}" y1="${(y + s*(r+2)).toFixed(1)}" x2="${(x + c*(r+5)).toFixed(1)}" y2="${(y + s*(r+5)).toFixed(1)}" stroke="#ffd45a" stroke-width="2" stroke-linecap="round"/>`;
+    }
+    return rays + `<circle cx="${x}" cy="${y}" r="${r}" fill="#ffc933"/>`;
+  };
+  const luna = (x, y, k) => `<path transform="translate(${x} ${y}) scale(${k})" d="M14 0A14 14 0 1 0 28 22A11 11 0 0 1 14 0Z" fill="#6b76a8"/>`;
+  const astro = (x, y) => dd ? sol(x, y, 7) : luna(x - 12, y - 11, 0.85);
+  const nube = (col) => `<path d="M14 38h21a7.5 7.5 0 0 0 .9-14.9A10.5 10.5 0 0 0 16.6 22.6 8.2 8.2 0 0 0 14 38Z" fill="${col}"/>`;
+  const gota = (x, y, col) => `<path d="M${x} ${y}l-2.2 5.2" stroke="${col || '#3d8ee6'}" stroke-width="2.8" stroke-linecap="round" fill="none"/>`;
+  const gotas = (n, col) => { const xs = n === 2 ? [19, 29] : n === 3 ? [16, 24, 32] : [14, 21, 28, 35]; return xs.map(x => gota(x + 2, 41, col)).join(''); };
+  const llov = (n) => { const xs = n === 1 ? [22, 28] : n === 2 ? [18, 25, 32] : [16, 22, 28, 34]; return xs.map(x => `<circle cx="${x}" cy="42" r="1.7" fill="#3d8ee6"/>`).join(''); };
+  const copo = (x, y, col) => `<g stroke="${col || '#5bc0ff'}" stroke-width="1.8" stroke-linecap="round"><line x1="${x-3}" y1="${y}" x2="${x+3}" y2="${y}"/><line x1="${x-1.5}" y1="${y-2.6}" x2="${x+1.5}" y2="${y+2.6}"/><line x1="${x-1.5}" y1="${y+2.6}" x2="${x+1.5}" y2="${y-2.6}"/></g>`;
+  const copos = (n) => (n === 1 ? [24] : n === 2 ? [19, 29] : [15, 24, 33]).map((x, i) => copo(x, 42 + (i % 2 ? 1.5 : 0))).join('');
+  const rayo = '<path d="M26 31l-6 9h4.5l-2.5 7 8-10h-4.8l3-6Z" fill="#f08a24"/>';
+  const granizo = [16, 22, 28, 34].map((x, i) => `<path d="M${x} ${41 + (i % 2)}l2 2-2 2-2-2Z" fill="#3d6fe0"/>`).join('');
+  const hielo = [17, 25, 33].map(x => `<path d="M${x-2} 46h4l-2-3.6Z" fill="#5bc0ff"/>`).join('');
+  const cubierta = (col) => nube(col || '#b9c1cd');
+  const parc = (col) => astro(32, 14) + nube(col || '#c9d0da').replace('M14 38', 'M12 38');
+  let cuerpo;
+  if(code === 0) cuerpo = dd ? sol(24, 24, 10) : luna(8, 8, 1.25);
+  else if(code === 1) cuerpo = (dd ? sol(21, 21, 9) : luna(6, 6, 1.1)) + '<g transform="translate(10 6) scale(.6)">' + nube('#d3d9e2') + '</g>';
+  else if(code === 2) cuerpo = parc();
+  else if(code === 3) cuerpo = '<g transform="translate(-4 -6)">' + nube('#8f99a8') + '</g>' + nube('#c1c8d3');
+  else if(code === 45 || code === 48) cuerpo = [[12, 17], [10, 25], [14, 33]].map(([x, y]) => `<line x1="${x}" y1="${y}" x2="${x+26}" y2="${y}" stroke="#a7b0bd" stroke-width="3.2" stroke-linecap="round"/>`).join('');
+  else if(code >= 51 && code <= 55) cuerpo = cubierta() + llov(code - 50);
+  else if(code === 56 || code === 57) cuerpo = cubierta() + llov(1) + copo(36, 43);
+  else if(code === 61) cuerpo = cubierta() + gotas(2);
+  else if(code === 63) cuerpo = cubierta() + gotas(3);
+  else if(code === 65) cuerpo = cubierta('#9aa5b5') + gotas(4);
+  else if(code === 66 || code === 67) cuerpo = cubierta() + hielo + gota(21, 41) + gota(33, 41);
+  else if(code === 71) cuerpo = cubierta() + copos(1);
+  else if(code === 73) cuerpo = cubierta() + copos(2);
+  else if(code === 75) cuerpo = cubierta('#9aa5b5') + copos(3);
+  else if(code === 77) cuerpo = cubierta() + [17, 24, 31].map(x => `<circle cx="${x}" cy="43" r="1.9" fill="#5bc0ff"/>`).join('');
+  else if(code === 80 || code === 81) cuerpo = parc() + gotas(code === 80 ? 2 : 3);
+  else if(code === 82) cuerpo = parc('#aeb7c4') + gotas(4);
+  else if(code === 85 || code === 86) cuerpo = parc() + copos(code === 85 ? 2 : 3);
+  else if(code === 95) cuerpo = cubierta('#aab3c0') + rayo + gota(18, 41) + gota(34, 41);
+  else if(code === 96 || code === 99) cuerpo = cubierta('#aab3c0') + rayo + granizo;
+  else cuerpo = cubierta();
+  return '<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' + cuerpo + '</svg>';
+}
+function wxTemp(c){
+  if(c === undefined || c === null || !isFinite(c)) return '--°C';
+  return Math.round(c) + '°C <span class="wx-f">' + Math.round(c * 9 / 5 + 32) + '°F</span>';
+}
+(function(){
+  var st = document.createElement('style');
+  st.textContent = '.wx-f{font-size:.62em;font-weight:600;color:var(--text-dim);margin-left:3px;white-space:nowrap}';
+  document.head.appendChild(st);
+})();
 async function cargarClima(){
   try{
     const loc = (function(){
@@ -1815,11 +1885,12 @@ async function cargarClima(){
     const lat = loc ? loc.lat : LAT, lon = loc ? loc.lon : LON;
     document.getElementById('clima-lugar').textContent = 'CLIMA — ' + (loc && loc.nombre ? String(loc.nombre).toUpperCase() : 'BUIN');
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`+
-      `&current=temperature_2m,weathercode,surface_pressure&hourly=temperature_2m,weathercode`+
+      `&current=temperature_2m,weathercode,is_day,surface_pressure&hourly=temperature_2m,weathercode,is_day`+
       `&timezone=America%2FSantiago&forecast_hours=16`;
     const d = await getJSON(url);
-    document.getElementById('clima-actual').textContent = Math.round(d.current.temperature_2m)+'°C';
+    document.getElementById('clima-actual').innerHTML = wxTemp(d.current.temperature_2m);
     document.getElementById('clima-desc').textContent = CODIGOS[d.current.weathercode] || '—';
+    { const ic = document.getElementById('clima-ico'); if(ic){ ic.innerHTML = wxIcono(d.current.weathercode, d.current.is_day); ic.title = CODIGOS[d.current.weathercode] || ''; } }
     document.getElementById('clima-pres').textContent = (d.current.surface_pressure != null ? Math.round(d.current.surface_pressure) : '--') + ' hPa';
 
     function proyeccion(horasAdelante, elTemp, elHora){
@@ -1829,9 +1900,11 @@ async function cargarClima(){
         const diff = Math.abs(new Date(t)-objetivo);
         if(diff<mejor){mejor=diff; idx=i;}
       });
-      document.getElementById(elTemp).textContent = Math.round(d.hourly.temperature_2m[idx])+'°C';
+      document.getElementById(elTemp).innerHTML = wxTemp(d.hourly.temperature_2m[idx]);
       const h = new Date(d.hourly.time[idx]);
-      document.getElementById(elHora).textContent = String(h.getHours()).padStart(2,'0')+':00';
+      const cod = d.hourly.weathercode[idx], dia = d.hourly.is_day ? d.hourly.is_day[idx] : 1;
+      document.getElementById(elHora).textContent = String(h.getHours()).padStart(2,'0')+':00 · ' + (CODIGOS[cod] || '—');
+      const ic = document.getElementById(elTemp + '-ico'); if(ic){ ic.innerHTML = wxIcono(cod, dia); ic.title = CODIGOS[cod] || ''; }
     }
     proyeccion(2, 'clima-2h', 'clima-2h-hora');
     proyeccion(12, 'clima-12h', 'clima-12h-hora');
@@ -2203,7 +2276,7 @@ function renderLhTabla(){
       <tr>
         <td><input type="checkbox" class="qc-sel" data-k="${encodeURIComponent(qcKey(t))}"${qcSel&&qcSel.has(qcKey(t))?' checked':''}></td>
         <td>${utcAHoraLocal(t.time_utc)}</td>
-        <td class="lh-call">${t.callsign||''}</td>
+        <td class="lh-call">${typeof lhQrz==='function'?lhQrz(t.callsign||''):(t.callsign||'')}</td>
         <td>${t.name||''}</td>
         <td>${t.country||''}</td>
         <td class="lh-mode">${t.mode||''}</td>
@@ -2648,11 +2721,11 @@ async function botCargar(){
     set('bot-ini', c.inicio || ''); set('bot-fin', c.fin || '');
     set('bot-palabras', (c.palabras || []).join('\n'));
     set('bot-ok', c.resp_ok || ''); set('bot-dup', c.resp_dup || '');
-    set('bot-preg', c.resp_pregunta || ''); set('bot-mailok', c.resp_mail_ok || ''); set('bot-no', c.resp_no || '');
+    set('bot-preg', c.resp_pregunta || ''); set('bot-mailok', c.resp_mail_ok || ''); set('bot-no', c.resp_no || ''); set('bot-mal', c.resp_mal || ''); set('bot-fuera', c.resp_fuera || '');
     if(act !== document.getElementById('bot-auto')) document.getElementById('bot-auto').checked = !!c.auto;
     set('bot-qfreq', c.q_freq || ''); set('bot-qband', c.q_band || ''); set('bot-qmode', c.q_mode || '');
     set('bot-qrs', c.q_rst_s || ''); set('bot-qrr', c.q_rst_r || ''); set('bot-qcom', c.q_comments || '');
-    est.textContent = d.estado + ' · participantes registrados: ' + d.total;
+    est.textContent = d.estado + ' · participantes registrados: ' + d.total; botAjustar();
     document.getElementById('bot-body').innerHTML = d.participantes.length ? d.participantes.map(p =>
       '<tr><td class="lh-call">' + qcEsc(p.call) + '</td><td>' + qcEsc(p.peer) + '</td><td>' +
       qcEsc(new Date(p.ts * 1000).toLocaleString('es-CL')) + '</td><td>' + qcEsc(p.texto) + '</td><td>' + qcEsc(p.qsl || '') + '</td></tr>').join('')
@@ -2666,7 +2739,7 @@ document.getElementById('bot-guardar').addEventListener('click', async () => {
       body: JSON.stringify({enabled: document.getElementById('bot-on').checked, nombre: v('bot-nombre'),
         palabras: v('bot-palabras'), inicio: v('bot-ini'), fin: v('bot-fin'), resp_ok: v('bot-ok'),
         resp_dup: v('bot-dup'), max_por_dia: v('bot-max'),
-        resp_pregunta: v('bot-preg'), resp_mail_ok: v('bot-mailok'), resp_no: v('bot-no'),
+        resp_pregunta: v('bot-preg'), resp_mail_ok: v('bot-mailok'), resp_no: v('bot-no'), resp_mal: v('bot-mal'), resp_fuera: v('bot-fuera'),
         auto: document.getElementById('bot-auto').checked, q_freq: v('bot-qfreq'), q_band: v('bot-qband'),
         q_mode: v('bot-qmode'), q_rst_s: v('bot-qrs'), q_rst_r: v('bot-qrr'), q_comments: v('bot-qcom')})});
     const d = await r.json();
@@ -2681,6 +2754,36 @@ document.getElementById('bot-reset').addEventListener('click', async () => {
   catch(e){ botMsg('Error: ' + e.message); }
 });
 document.querySelector('[data-cfg="bot"]').addEventListener('click', botCargar);
+function botAjustar(){
+  document.querySelectorAll('.bot-msg').forEach(function(t){
+    t.style.height = 'auto';
+    if(t.scrollHeight > 0) t.style.height = (t.scrollHeight + (t.offsetHeight - t.clientHeight)) + 'px';
+  });
+}
+(function(){
+  var st = document.createElement('style');
+  st.textContent = '.bot-msg{width:100%;box-sizing:border-box;resize:none;overflow:hidden;line-height:1.35;min-height:0}';
+  document.head.appendChild(st);
+  document.addEventListener('input', function(e){ if(e.target.classList && e.target.classList.contains('bot-msg')) botAjustar(); });
+  document.addEventListener('keydown', function(e){ if(e.key === 'Enter' && e.target.classList && e.target.classList.contains('bot-msg')) e.preventDefault(); });
+  window.addEventListener('resize', botAjustar);
+})();
+
+
+/* ---------- APRS: acceso directo al bot de concurso ---------- */
+(function(){
+  const btn = document.getElementById('aprs-bot-btn'), est = document.getElementById('aprs-bot-est');
+  if(!btn) return;
+  btn.addEventListener('click', () => { setView('config'); setCfgTab('bot'); botCargar(); window.scrollTo(0, 0); });
+  async function estado(){
+    try{
+      const d = await (await fetch(BOT_API)).json(), c = d.config;
+      est.textContent = !c.enabled ? 'apagado' : !(c.palabras || []).length ? 'sin palabras clave'
+        : d.estado.indexOf('fuera') >= 0 ? 'fuera de fecha' : 'activo · ' + d.total;
+    }catch(e){ est.textContent = 'sin conexión'; }
+  }
+  estado(); setInterval(estado, 60000);
+})();
 
 /* ---------- LAST HEARD: cantidad de filas ---------- */
 var lhCount = Math.min(50, Math.max(5, parseInt(localStorage.getItem('pcbox-lh-count'), 10) || 30));
@@ -3470,13 +3573,50 @@ function qslDescargarCanvasComoImagen(data, nombreArchivo){
   off.width = 1920; off.height = 1080;
   const octx = off.getContext('2d');
   qslDrawCard(octx, off.width, off.height, data, qslDesign);
-  const a = document.createElement('a');
-  a.href = off.toDataURL('image/png');
-  a.download = nombreArchivo;
-  a.click();
+  off.toBlob(function(blob){
+    if(!blob){ alert('No se pudo generar la imagen de la QSL.'); return; }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = nombreArchivo;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 180000);
+    const t = document.createElement('div');
+    t.textContent = 'QSL generada: ' + nombreArchivo + ' (' + Math.round(blob.size / 1024) + ' KB) ';
+    const l = document.createElement('a');
+    l.href = url; l.target = '_blank'; l.rel = 'noopener'; l.textContent = '[Abrir imagen]';
+    l.style.cssText = 'color:#7dffb0;text-decoration:underline;margin-left:8px';
+    t.appendChild(l);
+    t.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:99999;background:#0b3d1f;color:#fff;border:1px solid #2ecc71;border-radius:8px;padding:10px 16px;font:13px sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.5)';
+    document.body.appendChild(t);
+    setTimeout(function(){ t.remove(); }, 10000);
+  }, 'image/png');
 }
+function qslToast(txt, ms){
+  const t = document.createElement('div');
+  t.textContent = txt;
+  t.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:99999;background:#0b3d1f;color:#fff;border:1px solid #2ecc71;border-radius:8px;padding:10px 16px;font:13px sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.5)';
+  document.body.appendChild(t);
+  setTimeout(function(){ t.remove(); }, ms || 6000);
+}
+/* La QSL se dibuja en el servidor (puerto 5017) y llega como descarga normal del navegador.
+   Si el servicio no responde, se usa el dibujo en el navegador como respaldo. */
 function qslDescargarUna(q){
-  qslDescargarCanvasComoImagen(q, `QSL_${q.opCall}_${q.dxCall}_${(q.fechaHora||'').replace(/[: ]/g,'-')}.png`);
+  const nombre = `QSL_${q.opCall}_${q.dxCall}_${(q.fechaHora||'').replace(/[: ]/g,'-')}.png`;
+  const base = 'http://' + location.hostname + ':5017';
+  const p = new URLSearchParams({call:q.dxCall||'', op:q.opCall||'', fecha:q.fechaHora||'', freq:q.freq||'', band:q.band||'', mode:q.mode||'', rst_s:q.rstS||'', rst_r:q.rstR||'', comments:q.comments||''});
+  const f = document.createElement('iframe');
+  f.style.display = 'none';
+  f.src = base + '/api/qsl/descargar?' + p.toString();
+  document.body.appendChild(f);
+  setTimeout(function(){ f.remove(); }, 180000);
+  qslToast('Preparando la QSL de ' + (q.dxCall || '') + ' en el servidor... la descarga empieza en unos segundos', 8000);
+  fetch(base + '/api/mail/status', {cache:'no-store'}).then(function(r){ if(!r.ok) throw new Error('sin servicio'); }).catch(function(){
+    f.remove();
+    qslDescargarCanvasComoImagen(q, nombre);
+  });
 }
 
 document.getElementById('qsl-add').addEventListener('click', () => {
@@ -3749,10 +3889,10 @@ async function sysWxRefrescar(){
     const ahora = new Date();
     let idxAhora = 0;
     for(let i=0;i<horas.length;i++){ if(new Date(horas[i]) <= ahora) idxAhora = i; else break; }
-    const val = (i) => (temps[i] !== undefined ? `${Math.round(temps[i])}°C` : '--°C');
-    document.getElementById('sys-wx-now').textContent = val(idxAhora);
-    document.getElementById('sys-wx-h1-val').textContent = val(idxAhora + h1);
-    document.getElementById('sys-wx-h2-val').textContent = val(idxAhora + h2);
+    const val = (i) => wxTemp(temps[i]);
+    document.getElementById('sys-wx-now').innerHTML = val(idxAhora);
+    document.getElementById('sys-wx-h1-val').innerHTML = val(idxAhora + h1);
+    document.getElementById('sys-wx-h2-val').innerHTML = val(idxAhora + h2);
     sysWxStatus.textContent = `Actualizado — ${sysWxLoc.nombre}, ${sysWxLoc.pais}`;
   } catch(err){ sysWxStatus.textContent = 'Error al obtener el clima (revisa conexión a internet).'; }
 }
@@ -4159,7 +4299,7 @@ setCfgTab(localStorage.getItem('pcbox-config-tab') || 'sistema');
   const objetivos = {
     lastheard: () => [$('lh-filters'), $('lh-q') && $('lh-q').parentElement, $('lh-mindur') && $('lh-mindur').closest('div')],
     ranking: () => [document.querySelector('#ranking .lh-filters')],
-    aprs: () => [...document.querySelectorAll('#aprs .lh-filters > :not([data-aprs-tab])')],
+    aprs: () => [...document.querySelectorAll('#aprs .lh-filters > :not([data-aprs-tab]):not(#aprs-bot-btn)')],
     grabaciones: () => [$('rec-filtros')],
     guardia: () => [$('gd-opciones')]
   };
@@ -5240,7 +5380,7 @@ setInterval(() => {
   function pintar(){
     const f = ($('ct-filtro').value || '').toLowerCase();
     const l = datos.filter(c => !f || (c.call + ' ' + c.name + ' ' + c.email + ' ' + c.country).toLowerCase().indexOf(f) >= 0);
-    $('ct-body').innerHTML = l.map(c => '<tr style="border-bottom:1px solid var(--border)"><td style="padding:4px 6px"><b>' + esc(c.call) + '</b></td><td>' + esc(c.name) + '</td><td>' +
+    $('ct-body').innerHTML = l.map(c => '<tr style="border-bottom:1px solid var(--border)"><td style="padding:4px 6px"><b>' + (typeof lhQrz === 'function' ? lhQrz(c.call) : esc(c.call)) + '</b></td><td>' + esc(c.name) + '</td><td>' +
       esc(c.email) + '</td><td>' + esc(c.country) + '</td><td class="nx-sm">' + esc(c.fuente) + '</td><td style="white-space:nowrap"><button data-ed="' + esc(c.call) +
       '" title="Editar">✎</button> <button data-del="' + esc(c.call) + '" title="Borrar">✕</button></td></tr>').join('');
     $('ct-estado').textContent = datos.length + ' contactos (' + datos.filter(c => c.email).length + ' con correo)' + (l.length !== datos.length ? ' · mostrando ' + l.length : '');
@@ -5277,6 +5417,36 @@ setInterval(() => {
     }
   });
   document.querySelectorAll('[data-ctx]').forEach(b => b.addEventListener('click', () => { location.href = API + '/export?fmt=' + b.dataset.ctx; }));
+  function parseQrz(t){
+    const L = String(t || '').replace(/\r/g, '').split('\n').map(s => s.replace(/\u00a0/g, ' ').trim());
+    const m = L.join('\n').match(/[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}/);
+    const email = m ? m[0] : '';
+    const util = L.filter(s => s && !/^e-?mail\s*:/i.test(s));
+    if(!util.length) return null;
+    const p = util[0].match(/^([A-Za-z0-9]{3,10}(?:\/[A-Za-z0-9]+)?)\s*(.*)$/);
+    if(!p) return null;
+    let pais = p[2].trim();
+    const resto = util.slice(1), name = resto[0] || '', dir = resto.slice(1);
+    if(!pais && dir.length) pais = dir[dir.length - 1];
+    const addr = (dir.length && dir[dir.length - 1].toLowerCase() === pais.toLowerCase() ? dir.slice(0, -1) : dir).join(' | ');
+    return {call: p[1].toUpperCase(), name: name, email: email, pais: pais, notes: addr.slice(0, 200)};
+  }
+  $('ct-pegar-ok').addEventListener('click', async () => {
+    const pm = $('ct-pegar-msg'), d = parseQrz($('ct-pegar').value);
+    if(!d){ pm.textContent = 'No pude leer el formato: la primera línea debe empezar con el indicativo'; return; }
+    const prev = datos.find(x => x.call === d.call.split('/')[0]) || {};
+    pm.textContent = 'Guardando...';
+    try{
+      const r = await fetch(API, {method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({call: d.call, name: d.name || prev.name || '', email: d.email || prev.email || '',
+                              country: d.pais || prev.country || '', notes: d.notes || prev.notes || ''})});
+      const j = await r.json();
+      if(!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+      $('ct-pegar').value = '';
+      pm.textContent = 'Agregado ' + j.call + (d.email ? ' (' + d.email + ')' : ' (sin correo)');
+      cargar();
+    }catch(e){ pm.textContent = 'Error: ' + e.message; }
+  });
   const tab = document.querySelector('[data-cfg="contactos"]');
   if(tab) tab.addEventListener('click', cargar);
   const p = $('cfg-panel-contactos');
@@ -5843,5 +6013,141 @@ window.pcboxWa = (function(){
 </script>
 <div id="pcbox-creditos">Creado y desarrollado por CA3PVF</div>
 <style>#pcbox-creditos{position:fixed;left:0;right:0;bottom:0;z-index:40;text-align:center;padding:6px 10px;font-size:.72em;letter-spacing:.3px;color:var(--text-dim,#8a96a3);background:var(--panel,#10161d);border-top:1px solid var(--border,#26303b);pointer-events:none}body{padding-bottom:30px;box-sizing:border-box}.layout{min-height:calc(100vh - 30px)}</style>
+<!-- AYUDAS-INICIO --><style>.ayuda-q{color:#e53935;font-weight:700;cursor:help;margin-left:5px;font-size:.85em;user-select:none;white-space:nowrap;display:inline-block}.ayuda-q:focus{outline:1px solid #e53935;border-radius:3px}.ayuda-box{position:fixed;z-index:99999;max-width:260px;display:none;pointer-events:none;background:#1c1c1c;color:#fff;border:1px solid #e53935;border-radius:6px;padding:7px 10px;font:12.5px/1.35 system-ui,sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.45)}</style><script>
+(function(){
+ var A={"lh-q": "Escribe al menos 3 letras del indicativo (ej: CE3) para buscar en todo el historial guardado.", "lh-mindur": "Oculta las transmisiones más cortas que estos segundos. 0 = mostrar todas.", "lh-count": "Cantidad de transmisiones a mostrar en la lista (5 a 50).", "aprs-int": "Cada cuántos minutos se envía la baliza automática (mínimo 10).", "aprs-rad": "Radio en km alrededor de tu ubicación para mostrar estaciones APRS (5 a 500).", "aprs-q": "Busca una estación por indicativo o parte de él, con o sin SSID.", "aprs-mapa": "Elige qué mapa se usa para ver las estaciones.", "aprs-to": "Indicativo con SSID al que enviarás el mensaje, ej: CE3ABC-7.", "aprs-txt": "Texto del mensaje APRS. Máximo 67 caracteres, sin tildes ni ñ.", "rec-q": "Filtra las grabaciones por indicativo, DMR ID o número de TG.", "rec-desde": "Fecha inicial del filtro.", "rec-hasta": "Fecha final del filtro.", "rec-dmin": "Duración mínima de la grabación, en segundos.", "rec-dmax": "Duración máxima de la grabación, en segundos.", "rec-orden": "Criterio con que se ordena la lista.", "rec-dir": "Sentido del orden: ascendente o descendente.", "rec-mail": "Correo al que se enviará el MP3 de la grabación.", "rec-tel": "Teléfono con código de país, ej: +56999998888, para compartir por WhatsApp.", "sat-c-sats": "Satélites a seguir, separados por coma: nombre (ISS, SO-50) o número NORAD (25544). Máximo 12.", "sat-c-el": "Elevación mínima sobre el horizonte (0 a 80°) para listar una pasada. Más alta = menos pasadas, pero mejores.", "sat-c-lead": "Minutos de anticipación con que se avisa antes de una pasada (1 a 1440).", "sis-c-km": "Solo se avisan sismos dentro de esta distancia (km) de tu ubicación.", "sis-c-seg": "Segundos que permanece visible el aviso de sismo.", "sis-c-mag": "Magnitud mínima de los sismos que se avisan.", "gd-q": "Busca en tu libro de guardia por indicativo o parte de él, ej: CE3.", "gd-fb": "Muestra solo los contactos de esta banda.", "gd-n": "Cantidad de contactos a mostrar en la lista.", "gd-dx": "Indicativo del colega con quien hiciste el contacto, ej: CE4XYZ.", "gd-fecha": "Fecha del contacto, en UTC.", "gd-ini": "Hora de inicio del contacto, en UTC. El botón «Ahora» pone la hora actual.", "gd-fin": "Hora de término del contacto, en UTC. El botón «Ahora» pone la hora actual.", "gd-band": "Banda en que hiciste el contacto.", "gd-freq": "Frecuencia en MHz, ej: 146.520. Si la dejas vacía se usa el inicio de la banda.", "gd-mode": "Modo de operación usado en el contacto.", "gd-rs": "Reporte de señal que tú enviaste, ej: 59.", "gd-rr": "Reporte de señal que recibiste del colega, ej: 59.", "gd-pwr": "Potencia usada, en watts. Ej: 5.", "gd-tel": "Teléfono del colega con código de país (opcional), para enviarle la QSL por WhatsApp.", "gd-com": "Comentarios del contacto (máx. 150 caracteres).", "bm-act-tgs": "TGs a vigilar en la actividad, separados por coma (máximo 5).", "bm-cfg-tgs": "TGs a monitorear, separados por coma (máximo 10). Ej: 730,730911.", "qsl-color-text": "Color del texto de los datos en la tarjeta QSL.", "qsl-color-box": "Color de los recuadros de título de la tarjeta QSL.", "qsl-color-title": "Color de las letras de los títulos.", "qsl-color-boxbg": "Color de fondo de los cuadros de datos.", "qsl-box-transp": "Transparencia del fondo de los cuadros. 0% = sólido, 100% = transparente.", "qsl-bg-input": "Imagen de fondo de la QSL. Tamaño recomendado: 1920x1080.", "qsl-op-call": "Tu indicativo, el que aparece como operador en la QSL.", "qsl-dx-call": "Indicativo del colega con quien hiciste el contacto, ej: CE4XYZ.", "qsl-date": "Fecha del contacto, en UTC.", "qsl-time": "Hora del contacto, en UTC.", "qsl-freq": "Frecuencia en MHz, ej: 146.520.", "qsl-band": "Banda en que hiciste el contacto.", "qsl-mode": "Modo de operación usado en el contacto.", "qsl-rst-s": "Reporte de señal que tú enviaste, ej: 59.", "qsl-rst-r": "Reporte de señal que recibiste, ej: 59.", "qsl-comments": "Texto que aparece en la QSL y reemplaza el agradecimiento por defecto.", "qsl-adif-input": "Importa un archivo ADIF (.adi / .adif) con contactos exportados de otro programa.", "sys-id-callsign": "Tu indicativo de radioaficionado, sin SSID.", "sys-id-hotspot-ip": "Dirección IP del hotspot en tu red local, ej: 192.168.1.35.", "sys-id-hotspot-user": "Usuario con el que se accede al hotspot. Normalmente pi-star.", "sys-id-hotspot-pass": "Contraseña del usuario del hotspot.", "sys-id-bm-pass": "Contraseña de tu cuenta BrandMeister Self-Care. Es opcional.", "sys-local-country": "País cuya hora local se muestra.", "sys-local-city": "Ciudad cuya hora local se muestra.", "sys-wx-country": "País para el pronóstico del clima.", "sys-wx-city": "Ciudad para el pronóstico del clima.", "sys-wx-h1": "Horas hacia adelante del primer pronóstico.", "sys-wx-h1-custom": "Cantidad de horas personalizada para el primer pronóstico.", "sys-wx-h2": "Horas hacia adelante del segundo pronóstico.", "sys-wx-h2-custom": "Cantidad de horas personalizada para el segundo pronóstico.", "apc-callsign": "Indicativo con el que se conecta a APRS-IS.", "apc-ssid": "Número de 0 a 15 que se agrega al indicativo, ej: 10 para CA3PVF-10.", "apc-passcode": "Clave APRS-IS de tu indicativo. Si la dejas vacía se calcula automáticamente.", "apc-lat": "Latitud en grados decimales, ej: -33.70. Sur es negativo.", "apc-lon": "Longitud en grados decimales, ej: -70.70. Oeste es negativo.", "apc-amb": "Reduce la precisión de la posición que se publica, para proteger tu ubicación exacta.", "apc-server": "Servidor APRS-IS al que se conecta. Normalmente rotate.aprs2.net.", "apc-port": "Puerto del servidor APRS-IS. Normalmente 14580.", "apc-radius": "Radio de cobertura en km (5 a 500) para mostrar estaciones.", "apc-bint": "Cada cuántos minutos se envía la baliza automática (mínimo 10).", "apc-bcom": "Texto que acompaña tu baliza. Máximo 43 caracteres.", "apc-preset": "Icono predefinido para tu estación en el mapa.", "apc-tabla": "/ = tabla primaria, \\ = tabla secundaria.", "apc-simbolo": "Carácter del símbolo APRS de tu icono. Solo si no usas un icono predefinido.", "apc-refresh": "Cada cuántos segundos se actualiza el panel APRS (5 a 300).", "apc-ttl": "Horas que se recuerdan las estaciones escuchadas (1 a 48).", "qz-user": "Tu usuario de QRZ.com (requiere suscripción con acceso XML).", "qz-pass": "Contraseña de QRZ.com. Vacío = mantener la guardada.", "ml-addr": "Cuenta Gmail desde la que se envían las QSL.", "ml-pass": "Contraseña de aplicación de Google (16 caracteres), no tu contraseña normal. Vacío = mantener la guardada.", "ml-nombre": "Nombre que verá el destinatario como remitente.", "ml-op": "Indicativo que se usa en el correo.", "ml-asunto": "Asunto del correo que lleva la QSL.", "ml-cuerpo": "Texto del cuerpo del correo.", "bot-nombre": "Nombre del concurso, para identificarlo.", "bot-max": "Máximo de participantes que se aceptan por día.", "bot-ini": "Fecha y hora (de pcbox) en que empieza el concurso.", "bot-fin": "Fecha y hora (de pcbox) en que termina el concurso.", "bot-palabras": "Palabras o frases válidas, una por línea. Quien envíe una de ellas queda registrado.", "bot-ok": "Mensaje APRS que recibe un participante nuevo cuando ya tienes su correo.", "bot-dup": "Mensaje que recibe quien ya estaba registrado.", "bot-mal": "Mensaje si envían una palabra incorrecta. {clave} se reemplaza por la clave correcta.", "bot-fuera": "Mensaje si escriben antes o después de las fechas del concurso. {inicio} y {fin} son opcionales.", "ct-pegar": "Pega aquí el bloque copiado desde qrz.com: primera línea con indicativo y país, luego nombre, dirección y la línea Email.", "bot-preg": "Mensaje con el que se le pide su correo cuando no lo tienes.", "bot-mailok": "Mensaje al confirmar su correo. {mail} se muestra parcialmente oculto.", "bot-no": "Mensaje si el participante responde NO. {fecha} = fecha de hoy.", "bot-qfreq": "Frecuencia en MHz que llevará la QSL del concurso.", "bot-qband": "Banda que llevará la QSL del concurso, ej: 2m.", "bot-qmode": "Modo que llevará la QSL del concurso.", "bot-qrs": "RST enviado que llevará la QSL del concurso.", "bot-qrr": "RST recibido que llevará la QSL del concurso.", "bot-qcom": "Comentario que aparece en la QSL del concurso.", "ft-t-fam": "Tipo de letra de los títulos de las tarjetas.", "ft-t-size": "Tamaño de letra de los títulos de las tarjetas.", "ft-i-fam": "Tipo de letra del indicativo (esquina superior izquierda).", "ft-i-size": "Tamaño de letra del indicativo.", "ft-b-fam": "Tipo de letra de los botones de las tarjetas.", "ft-b-size": "Tamaño de letra de los botones de las tarjetas.", "ct-filtro": "Busca en la libreta por indicativo, nombre o correo.", "ct-call": "Indicativo del contacto, sin SSID (3 a 10 letras o números).", "ct-name": "Nombre del contacto.", "ct-mail": "Correo del contacto. No puede repetirse en la libreta.", "ct-pais": "País del contacto.", "rid-cfg-timeout": "Segundos antes de ocultar la información de la ficha. 0 = no ocultar."}, box=null, activo=null;
+ function ref(f){var l=f.closest('label');
+  if(l&&l.querySelectorAll('input,select,textarea').length===1)return l; return f;}
+ function inyectar(){
+  Object.keys(A).forEach(function(id){
+   var f=document.getElementById(id); if(!f||f.getAttribute('data-ayuda'))return;
+   var q=document.createElement('span'); q.className='ayuda-q'; q.tabIndex=0; q.textContent='(?)';
+   q.setAttribute('role','button'); q.setAttribute('aria-label','Ayuda'); q.setAttribute('data-t',A[id]);
+   var r=ref(f); r.parentNode.insertBefore(q,r.nextSibling); f.setAttribute('data-ayuda','1');
+  });
+ }
+ function mostrar(q){
+  if(!box){box=document.createElement('div');box.className='ayuda-box';box.setAttribute('role','tooltip');document.body.appendChild(box);}
+  box.textContent=q.getAttribute('data-t'); box.style.display='block'; activo=q;
+  var r=q.getBoundingClientRect(), w=box.offsetWidth, h=box.offsetHeight;
+  var x=Math.min(Math.max(8,r.left),window.innerWidth-w-8), y=r.bottom+6;
+  if(y+h>window.innerHeight-8) y=Math.max(8,r.top-h-6);
+  box.style.left=x+'px'; box.style.top=y+'px';
+ }
+ function ocultar(){if(box)box.style.display='none';activo=null;}
+ function esq(e){return e.target&&e.target.closest?e.target.closest('.ayuda-q'):null;}
+ document.addEventListener('mouseover',function(e){var q=esq(e);if(q)mostrar(q);});
+ document.addEventListener('mouseout',function(e){if(esq(e))ocultar();});
+ document.addEventListener('focusin',function(e){var q=esq(e);if(q)mostrar(q);});
+ document.addEventListener('focusout',function(e){if(esq(e))ocultar();});
+ document.addEventListener('click',function(e){var q=esq(e);if(q){e.preventDefault();e.stopPropagation();activo===q?ocultar():mostrar(q);}else ocultar();},true);
+ document.addEventListener('keydown',function(e){if(e.key==='Escape')ocultar();});
+ window.addEventListener('scroll',ocultar,true);
+ var t=null; new MutationObserver(function(){clearTimeout(t);t=setTimeout(inyectar,300);}).observe(document.body,{childList:true,subtree:true});
+ inyectar();
+})();
+</script><!-- AYUDAS-FIN -->
+<!-- QRZ-COLA-INICIO --><style>#lh-body td.lh-call a.lh-qrz,#qc-body td.lh-call a.lh-qrz{color:inherit;text-decoration:inherit}#lh-body td.lh-call a.lh-qrz:hover,#qc-body td.lh-call a.lh-qrz:hover{text-decoration:underline}</style>
+<script>
+function lhQrz(c){
+  c = String(c == null ? '' : c);
+  var k = c.trim().toUpperCase().replace(/[^A-Z0-9\/]/g, '');
+  if(!k) return c;
+  var t = c.replace(/[&<>"]/g, function(x){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[x]; });
+  return '<a class="lh-qrz" href="https://www.qrz.com/db/' + k + '" target="_blank" rel="noopener noreferrer" title="Ver ' + k + ' en QRZ.com">' + t + '</a>';
+}
+(function(){
+  var enviando = {};
+  var esc = function(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(x){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[x]; }); };
+
+  // icono de envio junto al lapiz del correo
+  function botones(){
+    var qb = document.getElementById('qc-body'); if(!qb) return;
+    qb.querySelectorAll('tr').forEach(function(tr){
+      var cc = tr.querySelector('td.lh-call');
+      if(cc && !cc.querySelector('a.lh-qrz')) cc.innerHTML = lhQrz(cc.textContent);
+      var x = tr.querySelector('[data-uid]'), m = tr.querySelector('[data-mail]'); if(!x || !m) return;
+      var uid = decodeURIComponent(x.dataset.uid);
+      var q = (qcCola || []).find(function(z){ return z.uid === uid; });
+      if(!q || !q.email || q.estado === 'enviada') return;
+      m.insertAdjacentHTML('afterend', ' <button class="qsl-mini-btn" data-send="' + encodeURIComponent(uid) + '" title="Enviar la QSL a ' + esc(q.email) + '">✉</button>');
+    });
+  }
+  var pintarOrig = qcPintar;
+  qcPintar = function(){ pintarOrig.apply(this, arguments); botones(); };
+
+  async function enviarUno(q){
+    var val = function(id){ var e = document.getElementById(id); return e ? e.value : ''; };
+    var op = (val('qsl-op-call') || 'CA3PVF').trim().toUpperCase();
+    var data = {opCall: op, dxCall: q.callsign, fechaHora: String(q.time_utc || '').slice(0, 16),
+                mode: (q.mode || '') + (q.target ? ' · ' + q.target : ''), freq: val('qsl-freq'), band: val('qsl-band'),
+                rstS: val('qsl-rst-s') || '59', rstR: val('qsl-rst-r') || '59', comments: val('qsl-comments')};
+    var off = document.createElement('canvas'); off.width = 1920; off.height = 1080;
+    qslDrawCard(off.getContext('2d'), off.width, off.height, data, qslDesign);
+    var blob = await new Promise(function(r){ off.toBlob(r, 'image/png'); });
+    var b64 = await new Promise(function(res, rej){ var fr = new FileReader(); fr.onload = function(){ res(String(fr.result).split(',')[1]); }; fr.onerror = rej; fr.readAsDataURL(blob); });
+    var r = await fetch(ML_API + '/send', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({to: q.email, call: q.callsign,
+        fecha: (String(data.fechaHora).match(/^(\d{4})-(\d{2})-(\d{2})/) || []).slice(1).reverse().join('-'),
+        filename: 'QSL_' + op + '_' + q.callsign.replace(/[^A-Za-z0-9]/g, '') + '.png', png_b64: b64})});
+    var d = await r.json();
+    if(!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    await qcPost('/estado', {uids: [q.uid], estado: 'enviada'});
+  }
+
+  async function enviarLista(lista){
+    var st = await mlCargar();
+    if(!st || !st.configured){ qcMsg('No se envió la QSL: configura la cuenta en Configuración → Correo (Gmail)'); return; }
+    var ok = 0, fallo = 0, ult = '';
+    for(var i = 0; i < lista.length; i++){
+      var q = lista[i];
+      if(enviando[q.uid]) continue;
+      enviando[q.uid] = 1;
+      qcMsg('Enviando QSL a ' + q.callsign + ' (' + (i + 1) + ' de ' + lista.length + ')...');
+      try{ await enviarUno(q); ok++; }
+      catch(e){ fallo++; ult = e.message; }
+      finally{ delete enviando[q.uid]; }
+      if(ult && /límite|limite|rechaz|sin configurar/i.test(ult)) break;
+    }
+    qcMsg(ok + (ok === 1 ? ' QSL enviada' : ' QSL enviadas') + (fallo ? ', ' + fallo + ' con error (' + ult + ')' : ''));
+    qcCargar(); mlCargar();
+  }
+
+  // envio automatico: se dispara cuando se ingresa o actualiza un correo (lapiz o busqueda en QRZ)
+  async function autoEnviar(emails){
+    if(localStorage.getItem('qc_auto') === '0') return;
+    var calls = Object.keys(emails || {}).filter(function(c){ return emails[c]; }).map(function(c){ return c.toUpperCase(); });
+    if(!calls.length) return;
+    var fresh; try{ fresh = await (await fetch(QC_API)).json(); }catch(e){ return; }
+    var lista = fresh.filter(function(q){ return calls.indexOf(String(q.callsign).toUpperCase()) >= 0 && q.email && q.estado !== 'enviada'; });
+    if(lista.length) await enviarLista(lista);
+  }
+  var qcPostOrig = qcPost;
+  qcPost = async function(path, body){
+    var r = await qcPostOrig(path, body);
+    if(path === '/email' && body && body.emails) setTimeout(function(){ autoEnviar(body.emails); }, 0);
+    return r;
+  };
+
+  var qb = document.getElementById('qc-body');
+  if(qb) qb.addEventListener('click', function(e){
+    var b = e.target.closest('[data-send]'); if(!b) return;
+    var uid = decodeURIComponent(b.dataset.send);
+    var q = (qcCola || []).find(function(z){ return z.uid === uid; });
+    if(q && q.email) enviarLista([q]);
+  });
+
+  var m = document.getElementById('qc-msg');
+  if(m && !document.getElementById('qc-auto')){
+    var l = document.createElement('label');
+    l.style.cssText = 'margin-right:10px;font-size:.9em;cursor:pointer';
+    l.innerHTML = '<input type="checkbox" id="qc-auto"> Envío automático al ingresar el correo';
+    m.parentNode.insertBefore(l, m);
+    var c = l.firstChild; c.checked = localStorage.getItem('qc_auto') !== '0';
+    c.addEventListener('change', function(){ localStorage.setItem('qc_auto', c.checked ? '1' : '0'); });
+  }
+  try{ qcPintar(); }catch(e){}
+})();
+</script><!-- QRZ-COLA-FIN -->
 </body>
 </html>

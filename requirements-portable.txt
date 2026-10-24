@@ -5,3 +5,4 @@ sgp4>=2.23
 python-socketio[client]>=5.10
 websocket-client>=1.6
 pillow>=10.0
+aprslib>=0.7

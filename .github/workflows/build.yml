@@ -1,30 +1,59 @@
-name: build
+name: Compilar portable
 on:
-  workflow_dispatch:
   push:
     tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: write
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        include:
+          - { os: windows-latest,  name: windows-x64 }
+          - { os: ubuntu-latest,   name: linux-x64 }
+          - { os: ubuntu-24.04-arm, name: linux-arm64 }
+          - { os: macos-latest,    name: macos-arm64 }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install -r requirements-portable.txt pyinstaller
-      - name: Build
+      - name: Compilar (Windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: build.bat
+      - name: Compilar (Linux/macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: bash build.sh
+      - name: Empaquetar
         shell: bash
         run: |
-          SEP=":"; [ "$RUNNER_OS" = "Windows" ] && SEP=";"
-          pyinstaller --onefile --clean --noconfirm --name pcbox-portable \
-            --add-data "services${SEP}services" --add-data "dashboard.html${SEP}." --add-data "wizard.html${SEP}." \
-            --collect-submodules socketio --collect-submodules engineio --collect-all sgp4 \
-            --exclude-module tkinter --exclude-module matplotlib --exclude-module numpy \
-            portable_app.py
+          cd dist
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            mv pcbox-portable.exe pcbox-portable-${{ matrix.name }}.exe
+          else
+            mv pcbox-portable pcbox-portable-${{ matrix.name }}
+            tar czf pcbox-portable-${{ matrix.name }}.tar.gz pcbox-portable-${{ matrix.name }}
+            rm pcbox-portable-${{ matrix.name }}
+          fi
       - uses: actions/upload-artifact@v4
         with:
-          name: pcbox-portable-${{ matrix.os }}
-          path: dist/*
+          name: pcbox-${{ matrix.name }}
+          path: dist/pcbox-portable-*
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pcbox-*
+          merge-multiple: true
+          path: dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*

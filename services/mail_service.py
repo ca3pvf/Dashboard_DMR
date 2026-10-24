@@ -19,7 +19,7 @@ import time
 from email.message import EmailMessage
 from email.utils import formataddr
 
-from flask import Flask, jsonify, request
+from flask import Flask, Response, jsonify, request
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_PATH = os.environ.get("MAIL_CONFIG", os.path.join(BASE, "mail_config.json"))
@@ -30,6 +30,7 @@ HOST, SMTP_PORT = "smtp.gmail.com", 587
 DAILY_LIMIT = 400          # Gmail gratuito permite ~500 por dia; se deja margen
 MIN_GAP = 1.5              # segundos entre envios
 MAX_PNG = 12 * 1024 * 1024
+SEND_TIMEOUT = 180       # una QSL con fondo pesa ~4 MB y tarda ~20 s en subir
 RE_MAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 DEF_SUBJECT = "QSL {op} - confirmacion de contacto con {dx}"
 DEF_BODY = ("Hola {dx},\n\nAdjunto mi tarjeta QSL por nuestro contacto del {fecha}.\n"
@@ -133,6 +134,7 @@ def _smtp(addr, pwd):
                 etapa = "login"
                 s.user, s.password = addr, pwd
                 s.auth("PLAIN", s.auth_plain, initial_response_ok=True)   # solo PLAIN: Gmail corta si se reintenta con LOGIN
+                s.sock.settimeout(SEND_TIMEOUT)   # tras el login: el adjunto grande necesita más de 20 s
                 _FAM_OK[:] = [fam]
                 return s
             except smtplib.SMTPAuthenticationError:
@@ -375,6 +377,43 @@ def api_auto():
     except Exception:
         pass
     return jsonify({"ok": True, "to": to})
+
+
+_render_lock = threading.Lock()
+
+
+@app.route("/api/qsl/descargar")
+def api_qsl_descargar():
+    """Dibuja la QSL en el servidor y la entrega como descarga normal (Content-Disposition: attachment)."""
+    a = request.args
+
+    def t(k, n):
+        return re.sub(r"[\x00-\x1f<>]", "", str(a.get(k, "") or "")).strip()[:n]
+    cfg = leer_cfg()
+    call = re.sub(r"[^A-Za-z0-9/]", "", t("call", 14)).upper()
+    if not call:
+        return jsonify({"error": "falta el indicativo"}), 400
+    op = re.sub(r"[^A-Za-z0-9/]", "", t("op", 14) or cfg.get("op_call") or "CA3PVF").upper()
+    try:
+        import qsl_render
+    except ImportError:
+        return jsonify({"error": "falta Pillow: sudo apt install -y python3-pil"}), 500
+    try:
+        diseno = json.loads(_http(STORE + "/config/pcbox-qsl-design").get("value") or "{}")
+        bg = _http(STORE + "/config/pcbox-qsl-bg", timeout=30).get("value") or ""
+        bg_bytes = base64.b64decode(bg.split(",", 1)[1]) if bg.startswith("data:") and "," in bg else None
+    except Exception as e:
+        return jsonify({"error": "no se pudo leer el diseno de la QSL: %s" % e}), 502
+    datos = {"opCall": op, "dxCall": call, "fechaHora": t("fecha", 19)[:16], "freq": t("freq", 12), "band": t("band", 8),
+             "mode": t("mode", 10), "rstS": t("rst_s", 6), "rstR": t("rst_r", 6), "comments": t("comments", 120)}
+    try:
+        with _render_lock:
+            png = qsl_render.render(datos, diseno, bg_bytes)
+    except Exception as e:
+        return jsonify({"error": "error dibujando la QSL: %s" % e}), 500
+    nombre = re.sub(r"[^A-Za-z0-9._-]", "_", "QSL_%s_%s_%s.png" % (op, call, t("fecha", 19).replace(":", "-").replace(" ", "-")))
+    return Response(png, mimetype="image/png",
+                    headers={"Content-Disposition": 'attachment; filename="%s"' % nombre, "Cache-Control": "no-store"})
 
 
 if __name__ == "__main__":
