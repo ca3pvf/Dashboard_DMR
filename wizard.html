@@ -44,6 +44,7 @@ code{background:rgba(127,127,127,.15);padding:1px 5px;border-radius:4px}
   <div class="r">
     <label>Latitud *<input type="text" id="lat" placeholder="-33.4500"></label>
     <label>Longitud *<input type="text" id="lon" placeholder="-70.6700"></label>
+    <div style="margin:6px 0 10px"><button type="button" id="geo-btn">Buscar coordenadas de la ciudad</button><span id="geo-msg" style="margin-left:8px"></span><div id="geo-opc" style="margin-top:4px"></div></div>
   </div>
   <div class="hint">Se usa para sismos (distancia) y pasadas de satélites. Usa punto decimal; sur y oeste son negativos.</div>
   <label>DMR ID personal (7 dígitos, opcional)<input type="text" id="dmr" inputmode="numeric" maxlength="7"></label>
@@ -130,5 +131,45 @@ $('bg').onclick = async () => {
 </script>
 <div id="pcbox-creditos">Creado y desarrollado por CA3PVF</div>
 <style>#pcbox-creditos{position:fixed;left:0;right:0;bottom:0;z-index:40;text-align:center;padding:6px 10px;font-size:.72em;letter-spacing:.3px;color:var(--text-dim,#8a96a3);background:var(--panel,#10161d);border-top:1px solid var(--border,#26303b);pointer-events:none}body{padding-bottom:30px;box-sizing:border-box}.layout{min-height:calc(100vh - 30px)}</style>
+<script>/*upper-call*/(function(){
+var IDS=['call','gd-dx','gd-q','qsl-op-call','qsl-dx-call','sys-id-callsign','apc-callsign','ml-op','ct-call','aprs-q','lh-q','rec-q'];
+function fix(t){if(!t||!t.id||IDS.indexOf(t.id)<0||typeof t.value!=='string')return;var u=t.value.toUpperCase().replace(/\s+/g,'');if(u!==t.value){var p=t.selectionStart;t.value=u;try{t.setSelectionRange(p,p);}catch(e){}}}
+document.addEventListener('input',function(e){fix(e.target);},true);
+document.addEventListener('change',function(e){fix(e.target);},true);
+window.addEventListener('load',function(){setTimeout(function(){IDS.forEach(function(i){fix(document.getElementById(i));});},1500);});
+})();</script>
+<script>/*geo-auto*/(function(){
+var g=function(i){return document.getElementById(i);};
+var btn=g('geo-btn'),msg=g('geo-msg'),opc=g('geo-opc');
+if(!btn||!g('ciudad')||!g('pais')||!g('lat')||!g('lon'))return;
+var auto=true;
+function norm(s){return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();}
+function poner(r){
+  g('lat').value=Number(r.latitude).toFixed(4);g('lon').value=Number(r.longitude).toFixed(4);auto=true;
+  msg.textContent='Encontrado: '+[r.name,r.admin1,r.country].filter(Boolean).join(', ')+'. Verifica; puedes corregir las coordenadas a mano.';
+}
+function buscar(){
+  var c=g('ciudad').value.trim(),p=g('pais').value.trim();
+  opc.textContent='';
+  if(!c){msg.textContent='Escribe la ciudad para buscar las coordenadas.';return;}
+  msg.textContent='Buscando...';
+  fetch('https://geocoding-api.open-meteo.com/v1/search?count=10&language=es&format=json&name='+encodeURIComponent(c))
+  .then(function(r){if(!r.ok)throw new Error('http');return r.json();})
+  .then(function(d){
+    var rs=d.results||[],np=norm(p);
+    var f=np?rs.filter(function(x){var cn=norm(x.country);return (cn&&(cn.indexOf(np)>-1||np.indexOf(cn)>-1))||norm(x.country_code)===np;}):rs;
+    if(!f.length){msg.textContent=rs.length?'No encontré '+c+' en '+p+'. Revisa el país o escribe las coordenadas a mano.':'No encontré esa ciudad. Revisa el nombre o escribe las coordenadas a mano.';return;}
+    poner(f[0]);
+    if(f.length>1){
+      opc.appendChild(document.createTextNode('¿Otra? '));
+      f.slice(1,5).forEach(function(r){var b=document.createElement('button');b.type='button';b.textContent=[r.name,r.admin1].filter(Boolean).join(', ');b.style.marginRight='6px';b.onclick=function(){poner(r);opc.textContent='';};opc.appendChild(b);});
+    }
+  })
+  .catch(function(){msg.textContent='No pude consultar el servicio (¿sin internet?). Escribe las coordenadas a mano.';});
+}
+btn.onclick=buscar;
+['lat','lon'].forEach(function(i){g(i).addEventListener('input',function(){auto=false;});});
+['ciudad','pais'].forEach(function(i){g(i).addEventListener('change',function(){if(auto||(!g('lat').value&&!g('lon').value))buscar();});});
+})();</script>
 </body>
 </html>

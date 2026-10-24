@@ -6149,5 +6149,12 @@ function lhQrz(c){
   try{ qcPintar(); }catch(e){}
 })();
 </script><!-- QRZ-COLA-FIN -->
+<script>/*upper-call*/(function(){
+var IDS=['call','gd-dx','gd-q','qsl-op-call','qsl-dx-call','sys-id-callsign','apc-callsign','ml-op','ct-call','aprs-q','lh-q','rec-q'];
+function fix(t){if(!t||!t.id||IDS.indexOf(t.id)<0||typeof t.value!=='string')return;var u=t.value.toUpperCase().replace(/\s+/g,'');if(u!==t.value){var p=t.selectionStart;t.value=u;try{t.setSelectionRange(p,p);}catch(e){}}}
+document.addEventListener('input',function(e){fix(e.target);},true);
+document.addEventListener('change',function(e){fix(e.target);},true);
+window.addEventListener('load',function(){setTimeout(function(){IDS.forEach(function(i){fix(document.getElementById(i));});},1500);});
+})();</script>
 </body>
 </html>

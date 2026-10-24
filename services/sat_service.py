@@ -50,6 +50,7 @@ def bajar_tle():
     texto = "\n".join(partes)
     if len(parsear(texto)) < 10:
         raise ValueError("TLE incompleto")
+    os.makedirs(os.path.dirname(TLE_PATH), exist_ok=True)
     open(TLE_PATH + ".tmp", "w").write(texto)
     os.replace(TLE_PATH + ".tmp", TLE_PATH)
 
