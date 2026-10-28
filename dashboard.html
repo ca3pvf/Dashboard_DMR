@@ -703,15 +703,14 @@ return {list:list,render:render,mount:mount,flag:flag}
           <div class="lh-filters">
             <button class="lh-chip" data-aprs-tab="est">Estaciones</button>
             <button class="lh-chip" data-aprs-tab="msg">Mensajes <span id="aprs-badge"></span></button>
-            <button class="lh-chip" id="aprs-bot-btn" title="Abrir la configuración del bot de concurso">Bot concurso: <span id="aprs-bot-est">--</span></button>
             <span style="display:inline-block;width:14px"></span>
             <button class="lh-chip" id="aprs-bal">Baliza: --</button>
-            <label style="font-size:0.85em">cada <input type="number" min="10" step="5" id="aprs-int" style="width:60px"> min</label>
             <label style="font-size:0.85em">radio <input type="number" min="5" max="500" step="10" id="aprs-rad" style="width:65px"> km <span id="aprs-rad-msg" style="opacity:.75"></span></label>
             <button class="lh-chip" id="aprs-ahora">Enviar ahora</button>
             <input type="text" id="aprs-q" placeholder="Buscar indicativo o parte (todos los SSID)" maxlength="10" style="width:210px;text-transform:uppercase">
             <select id="aprs-mapa" title="Mapa para ver la ubicación de una estación"><option value="osm">Mapa: OpenStreetMap</option><option value="aprsfi">Mapa: aprs.fi</option><option value="google">Mapa: Google Maps</option></select>
           </div>
+          <div id="aprs-conc" class="aprs-conc" style="display:none"></div>
           <div id="aprs-est" style="max-height:300px;overflow-y:auto;">
             <table class="lh-table">
               <thead><tr><th data-aprs-sort="call" style="cursor:pointer;user-select:none">Indicativo<span class="aprs-flecha"></span></th><th data-aprs-sort="dist" style="cursor:pointer;user-select:none">Distancia<span class="aprs-flecha"></span></th><th data-aprs-sort="hace" style="cursor:pointer;user-select:none">Hace<span class="aprs-flecha"></span></th><th>Comentario</th></tr></thead>
@@ -1295,7 +1294,8 @@ return {list:list,render:render,mount:mount,flag:flag}
           </div>
           <div class="cfg-panel" id="cfg-panel-bot">
             <div class="qsl-config">
-              <div class="qsl-section-label">Bot APRS de concurso (palabra clave → QSL a la cola)</div>
+              <div class="qsl-section-label">Bot APRS de concurso (responde por APRS y envía la QSL por correo)</div>
+              <div id="bot-req" class="bot-req">Consultando requisitos…</div>
               <div class="qsl-field-row">
                 <label><input type="checkbox" id="bot-on"> Bot activado</label>
                 <label>Nombre del concurso <input type="text" id="bot-nombre" autocomplete="off" placeholder="Concurso APRS"></label>
@@ -1309,7 +1309,8 @@ return {list:list,render:render,mount:mount,flag:flag}
                 <label style="flex:1 1 100%">Palabras o frases válidas (una por línea) <textarea id="bot-palabras" rows="3" style="width:100%"></textarea></label>
               </div>
               <div class="qsl-field-row">
-                <label style="flex:0 1 calc(50% - 50px);min-width:240px">Respuesta al participante nuevo (si ya tengo su correo) <textarea id="bot-ok" class="bot-msg" rows="1" autocomplete="off" spellcheck="false"></textarea></label>
+                <label style="flex:0 1 calc(50% - 50px);min-width:240px">Respuesta al participante nuevo (tengo su correo; envío automático ACTIVADO) <textarea id="bot-ok" class="bot-msg" rows="1" autocomplete="off" spellcheck="false"></textarea></label>
+                <label style="flex:0 1 calc(50% - 50px);min-width:240px">Respuesta al participante nuevo (tengo su correo; envío automático APAGADO) <textarea id="bot-okm" class="bot-msg" rows="1" autocomplete="off" spellcheck="false"></textarea></label>
                 <label style="flex:0 1 calc(50% - 50px);min-width:240px">Respuesta si ya estaba registrado <textarea id="bot-dup" class="bot-msg" rows="1" autocomplete="off" spellcheck="false"></textarea></label>
                 <label style="flex:0 1 calc(50% - 50px);min-width:240px">Pregunta si no tengo su correo <textarea id="bot-preg" class="bot-msg" rows="1" autocomplete="off" spellcheck="false"></textarea></label>
                 <label style="flex:0 1 calc(50% - 50px);min-width:240px">Respuesta al recibir su correo ({mail} = correo parcialmente oculto) <textarea id="bot-mailok" class="bot-msg" rows="1" autocomplete="off" spellcheck="false"></textarea></label>
@@ -1331,7 +1332,7 @@ return {list:list,render:render,mount:mount,flag:flag}
               <div class="qsl-field-row">
                 <label style="flex:1 1 100%">Comentario en la QSL <input type="text" id="bot-qcom" autocomplete="off" style="width:100%"></label>
               </div>
-              <div class="qsl-hint">El envío automático usa el diseño actual del generador (colores, fondo y posición del cuadro) y la cuenta Gmail configurada. Si el colega no tiene correo en QRZ, queda en la cola para revisarlo. Sin la casilla marcada, el bot solo agrega a la cola.</div>
+              <div class="qsl-hint">El envío automático usa el diseño actual del generador (colores, fondo y posición del cuadro) y la cuenta Gmail configurada. Si no hay correo del colega (libreta de contactos, cola QSL o QRZ), el bot se lo pide por APRS (debe responder MAIL tu@correo.com); si responde NO, solo se le envía el enlace temporal de 10 minutos por APRS. Sin la casilla marcada, el bot solo registra y agrega a la cola: no envía correos.</div>
               <div class="qsl-hint">En las respuestas puedes usar {call} (indicativo del colega) y {op} (tu indicativo). Máximo 67 caracteres ya reemplazados. Vacíos de inicio o fin = sin límite de fecha.</div>
               <div class="qsl-field-row">
                 <button class="qsl-btn primary" id="bot-guardar">Guardar bot</button>
@@ -1341,10 +1342,11 @@ return {list:list,render:render,mount:mount,flag:flag}
               </div>
               <div id="bot-estado" class="qsl-hint"></div>
               <div style="max-height:220px;overflow-y:auto;font-size:0.85em">
-                <table class="lh-table" style="width:100%"><thead><tr><th>Call</th><th>Desde</th><th>Hora</th><th>Mensaje</th><th>QSL</th></tr></thead>
+                <table class="lh-table" style="width:100%"><thead><tr><th>Call</th><th>Desde</th><th>Hora</th><th>Mensaje</th><th>Estado QSL</th></tr></thead>
                 <tbody id="bot-body"></tbody></table>
               </div>
-              <div class="qsl-hint">Cuando un colega envía por APRS un mensaje a tu indicativo con una de las palabras, el bot lo registra una sola vez por concurso, lo agrega a la cola QSL, busca su correo en QRZ y le responde por APRS. Las QSL no se envían solas: las revisas y pulsas "Enviar por correo" en la cola. Comparación sin importar mayúsculas, tildes ni signos.</div>
+              <div class="qsl-hint">Cuando un colega envía por APRS un mensaje a tu indicativo con una de las palabras, el bot lo registra una sola vez por concurso y lo agrega a la cola QSL. Busca su correo en este orden: libreta de contactos, cola QSL y QRZ; si no lo encuentra, se lo pide por APRS. Con "Generar y enviar la QSL por correo automáticamente" la envía sin intervención; si no, queda en la cola y la envías tú con "Enviar por correo" (tarjeta Last Heard, "Ver cola"). Comparación sin importar mayúsculas, tildes ni signos.</div>
+              <div class="qsl-hint">Protecciones: máximo 60 respuestas por hora en total; los avisos de "palabra incorrecta" o "concurso no disponible" tienen su propio tope (20 por hora y 3 por indicativo al día) para no agotar las respuestas a participantes; un indicativo que envía más de 6 mensajes en 10 minutos se ignora durante 1 hora (posible bucle entre bots).</div>
             </div>
           </div>
           <div class="cfg-panel" id="cfg-panel-apariencia">
@@ -2720,15 +2722,15 @@ async function botCargar(){
     set('bot-nombre', c.nombre || ''); set('bot-max', c.max_por_dia || 200);
     set('bot-ini', c.inicio || ''); set('bot-fin', c.fin || '');
     set('bot-palabras', (c.palabras || []).join('\n'));
-    set('bot-ok', c.resp_ok || ''); set('bot-dup', c.resp_dup || '');
+    set('bot-ok', c.resp_ok || ''); set('bot-okm', c.resp_ok_manual || ''); set('bot-dup', c.resp_dup || '');
     set('bot-preg', c.resp_pregunta || ''); set('bot-mailok', c.resp_mail_ok || ''); set('bot-no', c.resp_no || ''); set('bot-mal', c.resp_mal || ''); set('bot-fuera', c.resp_fuera || '');
     if(act !== document.getElementById('bot-auto')) document.getElementById('bot-auto').checked = !!c.auto;
     set('bot-qfreq', c.q_freq || ''); set('bot-qband', c.q_band || ''); set('bot-qmode', c.q_mode || '');
     set('bot-qrs', c.q_rst_s || ''); set('bot-qrr', c.q_rst_r || ''); set('bot-qcom', c.q_comments || '');
-    est.textContent = d.estado + ' · participantes registrados: ' + d.total; botAjustar();
+    est.textContent = d.estado + ' · participantes registrados: ' + d.total; botAjustar(); if(typeof botRequisitos === 'function') botRequisitos();
     document.getElementById('bot-body').innerHTML = d.participantes.length ? d.participantes.map(p =>
       '<tr><td class="lh-call">' + qcEsc(p.call) + '</td><td>' + qcEsc(p.peer) + '</td><td>' +
-      qcEsc(new Date(p.ts * 1000).toLocaleString('es-CL')) + '</td><td>' + qcEsc(p.texto) + '</td><td>' + qcEsc(p.qsl || '') + '</td></tr>').join('')
+      qcEsc(new Date(p.ts * 1000).toLocaleString('es-CL')) + '</td><td>' + qcEsc(p.texto) + '</td><td>' + botBadge(p) + '</td></tr>').join('')
       : '<tr><td colspan="5" class="lh-empty">Sin participantes</td></tr>';
   }catch(e){ est.textContent = 'Sin conexión con el servicio APRS (puerto 5014).'; }
 }
@@ -2737,7 +2739,7 @@ document.getElementById('bot-guardar').addEventListener('click', async () => {
   try{
     const r = await fetch(BOT_API, {method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({enabled: document.getElementById('bot-on').checked, nombre: v('bot-nombre'),
-        palabras: v('bot-palabras'), inicio: v('bot-ini'), fin: v('bot-fin'), resp_ok: v('bot-ok'),
+        palabras: v('bot-palabras'), inicio: v('bot-ini'), fin: v('bot-fin'), resp_ok: v('bot-ok'), resp_ok_manual: v('bot-okm'),
         resp_dup: v('bot-dup'), max_por_dia: v('bot-max'),
         resp_pregunta: v('bot-preg'), resp_mail_ok: v('bot-mailok'), resp_no: v('bot-no'), resp_mal: v('bot-mal'), resp_fuera: v('bot-fuera'),
         auto: document.getElementById('bot-auto').checked, q_freq: v('bot-qfreq'), q_band: v('bot-qband'),
@@ -2769,21 +2771,6 @@ function botAjustar(){
   window.addEventListener('resize', botAjustar);
 })();
 
-
-/* ---------- APRS: acceso directo al bot de concurso ---------- */
-(function(){
-  const btn = document.getElementById('aprs-bot-btn'), est = document.getElementById('aprs-bot-est');
-  if(!btn) return;
-  btn.addEventListener('click', () => { setView('config'); setCfgTab('bot'); botCargar(); window.scrollTo(0, 0); });
-  async function estado(){
-    try{
-      const d = await (await fetch(BOT_API)).json(), c = d.config;
-      est.textContent = !c.enabled ? 'apagado' : !(c.palabras || []).length ? 'sin palabras clave'
-        : d.estado.indexOf('fuera') >= 0 ? 'fuera de fecha' : 'activo · ' + d.total;
-    }catch(e){ est.textContent = 'sin conexión'; }
-  }
-  estado(); setInterval(estado, 60000);
-})();
 
 /* ---------- LAST HEARD: cantidad de filas ---------- */
 var lhCount = Math.min(50, Math.max(5, parseInt(localStorage.getItem('pcbox-lh-count'), 10) || 30));
@@ -2884,10 +2871,6 @@ document.querySelectorAll('[data-aprs-tab]').forEach(b => b.addEventListener('cl
 document.getElementById('aprs-bal').addEventListener('click', async () => {
   if(!aprsEstado) return;
   try{ await aprsPost('/beacon', {enabled: !aprsEstado.baliza.activa}); }catch(e){ alert(e.message); }
-  cargarAprs();
-});
-document.getElementById('aprs-int').addEventListener('change', async e => {
-  try{ await aprsPost('/beacon', {interval_min: parseInt(e.target.value, 10)}); }catch(err){ alert(err.message); }
   cargarAprs();
 });
 document.getElementById('aprs-ahora').addEventListener('click', async () => {
@@ -3012,10 +2995,8 @@ async function cargarAprs(){
     meta.innerHTML = '<span style="color:' + color + ';font-weight:700">' + texto + '</span> · ' +
       aprsIcono() + aprsEsc(s.indicativo) + ' · ' + s.estaciones + ' estaciones (' + s.radio_km + ' km)';
     const bal = document.getElementById('aprs-bal');
-    bal.textContent = 'Baliza: ' + (s.baliza.activa ? 'ON' : 'OFF');
+    bal.textContent = 'Baliza: ' + (s.baliza.activa ? 'ON · cada ' + s.baliza.intervalo_min + ' min' : 'OFF');
     bal.classList.toggle('on', s.baliza.activa);
-    const inp = document.getElementById('aprs-int');
-    if(document.activeElement !== inp) inp.value = s.baliza.intervalo_min;
     document.getElementById('aprs-badge').textContent = s.sin_leer ? '(' + s.sin_leer + ')' : '';
     const nav = document.querySelector('[data-view="aprs"]');
     if(nav) nav.textContent = 'APRS' + (s.sin_leer ? ' (' + s.sin_leer + ')' : '');
@@ -3030,10 +3011,10 @@ async function cargarAprs(){
       const lista = document.getElementById('aprs-msglist');
       const abajo = lista.scrollTop + lista.clientHeight >= lista.scrollHeight - 20;
       lista.innerHTML = ms.length ? ms.map(m => {
-        const hora = new Date(m.ts * 1000).toLocaleTimeString('es-CL', {hour: '2-digit', minute: '2-digit'});
+        const hora = (typeof aprsFechaHora === 'function') ? aprsFechaHora(m.ts) : new Date(m.ts * 1000).toLocaleTimeString('es-CL', {hour: '2-digit', minute: '2-digit'});
         const est = m.dir === 'out'
           ? ' <span style="opacity:.6">(' + aprsEsc(m.estado) + (m.estado === 'pendiente' ? ' ' + m.intentos + '/6' : '') + ')</span>' : '';
-        return '<div style="padding:3px 0"><span style="opacity:.6">' + hora + '</span> ' + (m.dir === 'in' ? '←' : '→') +
+        return '<div style="padding:3px 0"><span style="opacity:.6">' + hora + '</span> ' + (m.dir === 'in' ? '←' : '→') + aprsOrigen(m) +
           ' <b class="aprs-peer" data-call="' + aprsEsc(m.peer) + '" style="cursor:pointer">' + aprsEsc(m.peer) + '</b>: ' +
           aprsLink(m.text) + est + ' <span class="aprs-del" data-id="' + m.id + '" title="Borrar" style="cursor:pointer;opacity:.5;margin-left:6px">✕</span></div>';
       }).join('') : '<div class="lh-empty">Sin mensajes</div>';
@@ -4030,13 +4011,13 @@ setCfgTab(localStorage.getItem('pcbox-config-tab') || 'sistema');
     if(D.no_encontrados && D.no_encontrados.length) aviso += '<div style="color:var(--amber);font-size:0.85em">No encontrado: ' + esc(D.no_encontrados.join(', ')) + '</div>';
     if(!ps.length){ prox.innerHTML = aviso + '<div class="lh-empty">Sin pasadas en las próximas 48 h con elevación mínima de ' + D.config.min_el + '°.</div>'; lista.innerHTML = ''; return; }
     const p = ps[0];
-    prox.innerHTML = aviso + '<div style="font-size:11px;color:var(--text-dim)">PRÓXIMA PASADA</div>' +
+    prox.innerHTML = aviso + '<div class="sat-fila" data-n="' + p.norad + '" data-a="' + Math.round(p.aos) + '" data-l="' + Math.round(p.los) + '" title="Clic: ver la ruta en el mapa"><div style="font-size:11px;color:var(--text-dim)">PRÓXIMA PASADA · clic para ver la ruta</div>' +
       '<div style="font-size:1.15em;font-weight:700;color:var(--amber)">' + esc(p.sat) + '</div>' +
       '<div id="sat-cd" style="font-family:var(--mono);font-size:1.7em;font-weight:600;color:var(--green)"></div>' +
       '<div style="font-size:0.85em;color:var(--text-dim)">' + fecha(p.aos) + ' · ' + hhmm(p.aos) + ' → ' + hhmm(p.los) + ' · máx ' + Math.round(p.max_el) + '° a las ' + hhmm(p.max_t) +
-      ' · acimut ' + Math.round(p.az_aos) + '° → ' + Math.round(p.az_los) + '°</div>';
+      ' · acimut ' + Math.round(p.az_aos) + '° → ' + Math.round(p.az_los) + '°</div></div>';
     lista.innerHTML = ps.length > 1 ? '<table id="sat-tabla"><tr><th>Satélite</th><th>Día</th><th>Inicio</th><th>Máx°</th><th>Fin</th></tr>' +
-      ps.slice(1, 9).map(q => '<tr><td>' + esc(q.sat) + '</td><td>' + fecha(q.aos) + '</td><td>' + hhmm(q.aos) + '</td><td>' + Math.round(q.max_el) + '°</td><td>' + hhmm(q.los) + '</td></tr>').join('') + '</table>' : '';
+      ps.slice(1, 9).map(q => '<tr class="sat-fila" data-n="' + q.norad + '" data-a="' + Math.round(q.aos) + '" data-l="' + Math.round(q.los) + '" title="Clic: ver la ruta en el mapa"><td>' + esc(q.sat) + '</td><td>' + fecha(q.aos) + '</td><td>' + hhmm(q.aos) + '</td><td>' + Math.round(q.max_el) + '°</td><td>' + hhmm(q.los) + '</td></tr>').join('') + '</table>' : '';
     tic();
   }
   function tic(){
@@ -4299,7 +4280,7 @@ setCfgTab(localStorage.getItem('pcbox-config-tab') || 'sistema');
   const objetivos = {
     lastheard: () => [$('lh-filters'), $('lh-q') && $('lh-q').parentElement, $('lh-mindur') && $('lh-mindur').closest('div')],
     ranking: () => [document.querySelector('#ranking .lh-filters')],
-    aprs: () => [...document.querySelectorAll('#aprs .lh-filters > :not([data-aprs-tab]):not(#aprs-bot-btn)')],
+    aprs: () => [...document.querySelectorAll('#aprs .lh-filters > :not([data-aprs-tab])')],
     grabaciones: () => [$('rec-filtros')],
     guardia: () => [$('gd-opciones')]
   };
@@ -5188,7 +5169,7 @@ function hsnxPintar(){
   const on = !!(hsnxHw && hsnxHw.ok);
   card.classList.toggle('nx-off', !on);
   hsnxTxt('nx-estado', on ? 'en línea' : (hsnxHw ? 'sin conexión' : '--'));
-  hsnxTxt('nx-dt', on ? (hsnxHw.fecha || '') + ' ' + hsnxReloj() : '');
+  hsnxTxt('nx-dt', on ? (window.hsnxFecha ? hsnxFecha() : '') + ' ' + hsnxReloj() : '');
   const q = (hsSel === 1) ? ((window.QSO_ACTIVOS || [])[0] || null) : null;
   if(q){
     const m = hsnxModo(q.protocolo), col = m[1];
@@ -5201,7 +5182,7 @@ function hsnxPintar(){
     const sg = document.getElementById('nx-sig'); if(sg) sg.innerHTML = hsnxSigHtml(q.callsign);
   }else{
     hsnxSet('nx-logo', '<span class="nx-mm">MMDVM</span>');
-    hsnxSet('nx-main', on ? '<div class="nx-big">' + hsnxReloj() + '</div><div class="nx-sm">' + hsEsc(hsnxHw.fecha || '') + '</div>'
+    hsnxSet('nx-main', on ? '<div class="nx-big">' + hsnxReloj() + '</div><div class="nx-sm">' + hsEsc(window.hsnxFecha ? hsnxFecha() : '') + '</div>'
                           : '<div class="nx-sm">sin conexión con el hotspot</div>');
   }
 }
@@ -5258,7 +5239,7 @@ function hsnxDatos(q){
   try{ const i = JSON.parse(localStorage.getItem('pcbox-identidad') || '{}'); id = i.dmrid || i.dmrId || i.dmr_id || id; }catch(e){}
   const cs = document.querySelector('.identity .callsign');
   const d = {mode: q ? 'active' : 'idle', owner: {call: cs ? cs.textContent.trim() : '', id: id},
-    date: h.fecha || '', time: hsnxReloj(), tx: h.tx || '--', rx: h.rx || '--', temp: h.temp != null ? h.temp : '--',
+    date: (window.hsnxFecha ? hsnxFecha() : ''), time: hsnxReloj(), tx: h.tx || '--', rx: h.rx || '--', temp: h.temp != null ? h.temp : '--',
     cpu: h.load || '--', mhz: h.mhz, ip: h.ip || '--', iface: h.iface || '', qsoHoy: hsnxPtt != null ? hsnxPtt : '--',
     lh: lh.slice(0, 6).map(x => ({call: x.callsign, proto: hsnxModo(x.mode)[0], tg: tg(x.target), time: hsnxHoraLocal(x.time_utc)}))};
   if(q){
@@ -6156,5 +6137,200 @@ document.addEventListener('input',function(e){fix(e.target);},true);
 document.addEventListener('change',function(e){fix(e.target);},true);
 window.addEventListener('load',function(){setTimeout(function(){IDS.forEach(function(i){fix(document.getElementById(i));});},1500);});
 })();</script>
+<!-- MAXI-INICIO --><style>
+.card.maxi{position:fixed !important;left:0 !important;top:0 !important;width:100vw !important;height:100vh !important;
+  margin:0 !important;z-index:950 !important;border-radius:0 !important;display:flex !important;flex-direction:column;box-sizing:border-box;transition:none !important;}
+.card.maxi .card-head{border-radius:0;flex:0 0 auto;cursor:zoom-out;}
+.card.maxi .card-body{flex:1 1 auto;min-height:0;overflow:auto;}
+.card.maxi .card-body > div[style*="max-height"]{max-height:none !important;}
+.card.maxi .rz,.card.maxi .rzc{display:none !important;}
+.card-head{cursor:zoom-in;}
+.grid.libre .card-head{cursor:move;}
+</style><script>
+(() => {
+  let activa = null;
+  const SKIP = 'button,a,input,select,textarea,label,.card-ctl,.card-x,.card-min';
+  function alternar(card){
+    if(activa && activa !== card) activa.classList.remove('maxi');
+    const on = !card.classList.contains('maxi');
+    card.classList.toggle('maxi', on);
+    activa = on ? card : null;
+    document.body.style.overflow = on ? 'hidden' : '';
+    const sel = window.getSelection && window.getSelection(); if(sel) sel.removeAllRanges();
+    setTimeout(() => window.dispatchEvent(new Event('resize')), 50);
+  }
+  document.addEventListener('dblclick', ev => {
+    const head = ev.target.closest && ev.target.closest('.card-head');
+    if(!head || ev.target.closest(SKIP)) return;
+    const card = head.closest('.card');
+    if(!card || card.classList.contains('minimizada')) return;
+    alternar(card);
+  });
+  document.addEventListener('pointerdown', ev => {
+    const c = ev.target.closest && ev.target.closest('.card.maxi');
+    if(c && ev.target.closest('.card-head, .rzc, .rz') && !ev.target.closest(SKIP)) ev.stopPropagation();
+  }, true);
+  document.addEventListener('keydown', ev => { if(ev.key === 'Escape' && activa) alternar(activa); });
+})();
+</script><!-- MAXI-FIN -->
+<!-- SATRUTA-CSS-INI --><style>.sat-fila{cursor:pointer}tr.sat-fila:hover,div.sat-fila:hover{background:rgba(127,140,160,.14)}</style><!-- SATRUTA-CSS-FIN --><!-- SATRUTA-JS-INI --><script>
+document.addEventListener('click', ev => {
+  const f = ev.target.closest && ev.target.closest('.sat-fila');
+  if(!f) return;
+  window.open('http://' + location.hostname + ':5020/api/sat/ruta?norad=' + f.dataset.n + '&aos=' + f.dataset.a + '&los=' + f.dataset.l, '_blank', 'noopener');
+});
+</script><!-- SATRUTA-JS-FIN -->
+<!-- BOTB1-INI --><style>
+.bot-req{margin:6px 0 10px;border:1px solid rgba(127,140,160,.3);border-radius:6px;padding:6px 10px;font-size:0.88em}
+.bot-req .rq{display:flex;gap:8px;align-items:baseline;padding:2px 0;flex-wrap:wrap}
+.bot-req .ic{width:1.2em;text-align:center;font-weight:700}
+.bot-req .ok .ic{color:#39ff14}.bot-req .aviso .ic{color:#ffb300}.bot-req .error .ic{color:#ff5d5d}
+.bot-req .tx{opacity:.8}.bot-req a{cursor:pointer;text-decoration:underline}
+.bot-st{display:inline-block;padding:1px 7px;border-radius:9px;font-size:.92em;border:1px solid currentColor}
+.bot-st-enviada{color:#39ff14}.bot-st-error{color:#ff5d5d}.bot-st-esperando_correo,.bot-st-nuevo{color:#ffb300}
+.bot-st-en_cola,.bot-st-enviando{color:#5aa9ff}.bot-st-sin_correo,.bot-st-otro{color:#9aa5b1}
+</style><script>
+function botBadge(p){ return '<span class="bot-st bot-st-' + qcEsc(p.cod || 'otro') + '">' + qcEsc(p.qsl || 'nuevo') + '</span>'; }
+async function botRequisitos(){
+  const box = document.getElementById('bot-req'); if(!box) return;
+  try{
+    const d = await (await fetch(BOT_API + '/requisitos')).json();
+    box.textContent = '';
+    const t = document.createElement('div'); t.style.cssText = 'font-weight:600;margin-bottom:2px';
+    t.textContent = d.errores ? 'Requisitos: ' + d.errores + ' con problema' : (d.avisos ? 'Requisitos: lo esencial en orden (' + d.avisos + ' aviso(s))' : 'Requisitos: todo en orden');
+    box.appendChild(t);
+    d.checks.forEach(c => {
+      const f = document.createElement('div'); f.className = 'rq ' + c.nivel;
+      const ic = document.createElement('span'); ic.className = 'ic'; ic.textContent = c.nivel === 'ok' ? '✓' : (c.nivel === 'aviso' ? '!' : '✗');
+      const n = document.createElement('b'); n.textContent = c.nombre;
+      const x = document.createElement('span'); x.className = 'tx'; x.textContent = c.texto;
+      f.appendChild(ic); f.appendChild(n); f.appendChild(x);
+      if(c.tab && c.tab !== 'bot' && c.nivel !== 'ok'){
+        const a = document.createElement('a'); a.textContent = 'abrir';
+        a.onclick = () => { const b = document.querySelector('[data-cfg="' + c.tab + '"]'); if(b) b.click(); };
+        f.appendChild(a);
+      }
+      box.appendChild(f);
+    });
+  }catch(e){ box.textContent = 'No se pudieron consultar los requisitos.'; }
+}
+</script><!-- BOTB1-FIN -->
+<!-- BOTB2-INI --><style>
+.aprs-conc{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;margin:4px 0 6px;padding:4px 8px;border:1px solid rgba(127,140,160,.3);border-radius:6px;font-size:.85em}
+.aprs-conc a{cursor:pointer;text-decoration:underline}.aprs-conc .dim{opacity:.7}
+.aprs-conc-lista{flex:1 1 100%;display:flex;flex-direction:column;gap:2px;padding-top:4px;border-top:1px solid rgba(127,140,160,.2);max-height:190px;overflow-y:auto}
+.aprs-tag{font-size:.75em;padding:0 6px;border-radius:8px;border:1px solid currentColor;margin-left:4px}
+.aprs-tag-bot{color:#5aa9ff}.aprs-tag-concurso{color:#ffb300}
+.filtro-oculto + .ayuda-q{display:none !important}
+</style><script>
+function aprsOrigen(m){
+  if(m.origen === 'bot') return ' <span class="aprs-tag aprs-tag-bot" title="Mensaje enviado automáticamente por el bot de concurso">🤖 bot</span>';
+  if(m.origen === 'concurso') return ' <span class="aprs-tag aprs-tag-concurso" title="Mensaje procesado por el bot de concurso">concurso</span>';
+  return '';
+}
+function aprsFechaHora(ts){
+  const d = new Date(ts * 1000), p = n => String(n).padStart(2, '0');
+  return p(d.getDate()) + '/' + p(d.getMonth() + 1) + ' ' + d.toLocaleTimeString('es-CL', {hour: '2-digit', minute: '2-digit'});
+}
+(function(){
+  const box = document.getElementById('aprs-conc'); if(!box) return;
+  const API = BOT_API.replace(/\/bot$/, '');
+  let vista = null, ultimo = null, msgsPend = [], part = [];
+  const el = (tag, txt, css) => { const e = document.createElement(tag); if(txt != null) e.textContent = txt; if(css) e.style.cssText = css; return e; };
+  const irConfig = () => {
+    try{
+      if(typeof cerrada === 'function' && cerrada('config') && typeof abrirTarjeta === 'function') abrirTarjeta('config');
+      const nav = document.querySelector('.nav button[data-view="config"]');
+      if(nav) nav.click(); else setView('config');
+      const t = document.querySelector('[data-cfg="bot"]'); if(t) t.click();
+      window.scrollTo(0, 0);
+    }catch(e){ alert('No se pudo abrir la configuración del bot: ' + e.message); }
+  };
+  async function cargarPart(){
+    try{ part = (await (await fetch(BOT_API)).json()).participantes || []; }catch(e){ part = []; }
+  }
+  async function abrir(clave){
+    vista = (vista === clave) ? null : clave;
+    if(vista && vista !== 'msgs') await cargarPart();
+    pintar();
+  }
+  function contador(txt, n, clave, rojo){
+    if(!n) return el('span', txt + ' 0', 'opacity:.55');
+    const a = el('a', txt + ' ' + n, 'color:' + (rojo ? '#ff5d5d' : '#ffb300'));
+    a.title = 'Ver el detalle'; a.onclick = () => abrir(clave); return a;
+  }
+  function detalle(){
+    const L = el('div'); L.className = 'aprs-conc-lista';
+    if(vista === 'msgs'){
+      if(!msgsPend.length) L.appendChild(el('span', 'Sin mensajes pendientes de enviar', 'opacity:.7'));
+      msgsPend.forEach(m => L.appendChild(el('span', aprsFechaHora(m.ts) + ' → ' + m.peer + ': ' + m.text + ' (pendiente ' + m.intentos + '/6)')));
+    }else{
+      const grupos = {en_cola: ['en_cola', 'enviando'], esperando_correo: ['esperando_correo'], sin_correo: ['sin_correo'], error: ['error']};
+      const g = grupos[vista];
+      const filas = part.filter(p => !g || g.indexOf(p.cod) >= 0);
+      if(!filas.length) L.appendChild(el('span', 'Nada en esta lista', 'opacity:.7'));
+      filas.forEach(p => {
+        const f = el('span'); f.appendChild(el('b', p.call));
+        f.appendChild(el('span', ' ' + p.peer + ' · ' + aprsFechaHora(p.ts) + ' ', 'opacity:.7'));
+        const b = el('span', p.qsl || 'nuevo'); b.className = 'bot-st bot-st-' + (p.cod || 'otro'); f.appendChild(b); L.appendChild(f);
+      });
+      if(!g) L.appendChild(el('span', 'Se muestran los últimos 30 participantes', 'opacity:.55;font-size:.9em'));
+    }
+    box.appendChild(L);
+  }
+  function pintar(){
+    box.textContent = '';
+    if(!ultimo){ box.style.display = 'none'; return; }
+    box.style.display = '';
+    const d = ultimo, c = d.conteo || {}, col = d.estado === 'activo' ? '#39ff14' : (d.estado === 'apagado' ? '#9aa5b1' : '#ffb300');
+    box.appendChild(el('span', 'Concurso', 'font-weight:600'));
+    box.appendChild(el('span', d.estado, 'color:' + col + ';font-weight:600'));
+    if(d.estado !== 'apagado'){
+      box.appendChild(el('span', 'hoy ' + d.hoy));
+      box.appendChild(el('span', 'total ' + d.total));
+      if(d.ultimos.length) box.appendChild(el('span', 'último ' + d.ultimos[0].call + ' ' + aprsFechaHora(d.ultimos[0].ts), 'opacity:.8'));
+    }
+    box.appendChild(contador('msgs por enviar', msgsPend.length, 'msgs'));
+    box.appendChild(contador('QSL en cola', (c.en_cola || 0) + (c.enviando || 0), 'en_cola'));
+    box.appendChild(contador('esperando correo', c.esperando_correo || 0, 'esperando_correo'));
+    if(c.sin_correo) box.appendChild(contador('sin correo', c.sin_correo, 'sin_correo'));
+    if(c.error) box.appendChild(contador('con error', c.error, 'error', true));
+    if(d.errores){ const w = el('a', '⚠ ' + d.errores + ' requisito(s) con problema', 'color:#ff5d5d'); w.onclick = irConfig; box.appendChild(w); }
+    const a = el('a', vista === 'todos' ? 'ocultar lista ▴' : 'ver lista ▾'); a.onclick = () => abrir('todos'); box.appendChild(a);
+    const cfg = el('a', 'configurar'); cfg.onclick = irConfig; box.appendChild(cfg);
+    if(vista) detalle();
+  }
+  async function cargar(){
+    try{ ultimo = await (await fetch(BOT_API + '/resumen')).json(); }catch(e){ ultimo = null; }
+    try{ msgsPend = (await (await fetch(API + '/messages')).json()).filter(m => m.dir === 'out' && m.estado === 'pendiente'); }catch(e){ msgsPend = []; }
+    if(vista && vista !== 'msgs') await cargarPart();
+    pintar();
+  }
+  cargar(); setInterval(() => { if(!document.hidden) cargar(); }, 30000);
+})();
+</script><!-- BOTB2-FIN -->
+<!-- HORAUNICA-INI --><script>
+/* Pantalla Hotspot: misma fuente de hora que la tarjeta HORA (reloj del navegador + huso de la ciudad configurada) */
+function hsnxTZ(){ return (typeof sysLocalLoc !== 'undefined' && sysLocalLoc && sysLocalLoc.timezone) ? sysLocalLoc.timezone : undefined; }
+function hsnxReloj(){
+  try{ return new Intl.DateTimeFormat('es-CL', {timeZone: hsnxTZ(), hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit'}).format(new Date()); }
+  catch(e){ return '--:--:--'; }
+}
+function hsnxFecha(){
+  try{
+    const o = {}; new Intl.DateTimeFormat('es-CL', {timeZone: hsnxTZ(), day: '2-digit', month: '2-digit', year: '2-digit'})
+      .formatToParts(new Date()).forEach(p => { o[p.type] = p.value; });
+    return o.day + '/' + o.month + '/' + o.year;
+  }catch(e){ return ''; }
+}
+/* ambos relojes se redibujan justo al cambiar el segundo, para que siempre muestren lo mismo */
+(function(){
+  const f = () => {
+    try{ if(!document.hidden){ if(typeof sysTickClocks === 'function') sysTickClocks(); if(typeof hsnxPintar === 'function') hsnxPintar(); } }catch(e){}
+    setTimeout(f, 1000 - (Date.now() % 1000) + 30);
+  };
+  setTimeout(f, 1000 - (Date.now() % 1000) + 30);
+})();
+</script><!-- HORAUNICA-FIN -->
 </body>
 </html>

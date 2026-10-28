@@ -356,6 +356,7 @@ BOT_DEFAULTS = {
     "inicio": "",                      # "AAAA-MM-DDTHH:MM", hora de pcbox; vacio = sin limite
     "fin": "",
     "resp_ok": "Recibido {call}! QSL en camino a tu correo. Gracias, 73 de {op}",
+    "resp_ok_manual": "Recibido {call}! Anotado, te enviare la QSL. 73 de {op}",
     "resp_dup": "{call} ya estabas registrado en el concurso. 73 de {op}",
     "resp_pregunta": "Recibido {call}! QSL por mail? Responde MAIL tu@correo.com",
     "resp_mail_ok": "Gracias {call}! QSL enviada a {mail}. 73 de {op}",
@@ -458,89 +459,6 @@ def _err_http(e):
         return str(e)
 
 
-def bot_encolar_qsl(base, cid):
-    """Agrega al participante a la cola QSL, busca su correo en QRZ y, si esta activado, envia la QSL."""
-    c = bot_cfg()
-    ahora = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-    try:
-        _http_json("http://127.0.0.1:5013/api/store/qslcola",
-                   {"items": [{"uid": "aprs|%s|%s" % (base, cid), "callsign": base, "time_utc": ahora,
-                               "target": "", "mode": "APRS", "name": "", "country": "", "duration": 0}]})
-    except Exception as e:
-        print("bot: no se pudo agregar a la cola QSL: %s" % e, flush=True)
-        bot_marcar(base, cid, "error al agregar a la cola")
-        return
-    email, motivo = None, ""
-    try:
-        r = _http_json("http://127.0.0.1:5015/api/qrz/lookup?call=%s&fresh=1" % base, timeout=20)
-        email = r.get("email") or None
-        if email:
-            _http_json("http://127.0.0.1:5013/api/store/qslcola/email", {"emails": {base: email}})
-        elif r.get("error"):
-            motivo = "; QRZ: " + str(r["error"])[:40]
-    except Exception as e:
-        print("bot: consulta de correo en QRZ fallo: %s" % e, flush=True)
-        motivo = "; QRZ no responde"
-    if not email:
-        bot_marcar(base, cid, "en cola (sin correo%s)" % motivo)
-        _t = threading.Timer(BOT_REINT_S[0], bot_reintentar, args=(base, cid, 1)); _t.daemon = True; _t.start()
-        return
-    if not c.get("auto"):
-        bot_marcar(base, cid, "en cola")
-        return
-    bot_marcar(base, cid, "enviando...")
-    try:
-        _http_json("http://127.0.0.1:5017/api/mail/auto",
-                   {"call": base, "op": CFG["callsign"].upper(), "time_utc": ahora, "freq": c.get("q_freq", ""),
-                    "band": c.get("q_band", ""), "mode": c.get("q_mode", "APRS"), "rst_s": c.get("q_rst_s", "59"),
-                    "rst_r": c.get("q_rst_r", "59"), "comments": c.get("q_comments", "")}, timeout=90)
-        bot_marcar(base, cid, "enviada")
-    except urllib.error.HTTPError as e:
-        bot_marcar(base, cid, "error: " + _err_http(e))
-    except Exception as e:
-        bot_marcar(base, cid, "error: " + str(e))
-
-
-BOT_REINT_S = (120, 600, 1800)
-
-
-def bot_reintentar(base, cid, n):
-    """Vuelve a buscar el correo en QRZ (sin cache) y, si aparece, envia la QSL."""
-    try:
-        c = bot_cfg()
-        email = None
-        try:
-            r = _http_json("http://127.0.0.1:5015/api/qrz/lookup?call=%s&fresh=1" % base, timeout=20)
-            email = r.get("email") or None
-        except Exception as e:
-            print("bot: reintento QRZ fallo: %s" % e, flush=True)
-        if not email:
-            if n < len(BOT_REINT_S):
-                bot_marcar(base, cid, "en cola (sin correo; reintento %d/%d)" % (n, len(BOT_REINT_S)))
-                _t = threading.Timer(BOT_REINT_S[n], bot_reintentar, args=(base, cid, n + 1)); _t.daemon = True; _t.start()
-            else:
-                bot_marcar(base, cid, "en cola (sin correo en QRZ)")
-            return
-        _http_json("http://127.0.0.1:5013/api/store/qslcola/email", {"emails": {base: email}})
-        if not c.get("auto"):
-            bot_marcar(base, cid, "en cola")
-            return
-        bot_marcar(base, cid, "enviando...")
-        ahora = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-        try:
-            _http_json("http://127.0.0.1:5017/api/mail/auto",
-                       {"call": base, "op": CFG["callsign"].upper(), "time_utc": ahora, "freq": c.get("q_freq", ""),
-                        "band": c.get("q_band", ""), "mode": c.get("q_mode", "APRS"), "rst_s": c.get("q_rst_s", "59"),
-                        "rst_r": c.get("q_rst_r", "59"), "comments": c.get("q_comments", "")}, timeout=90)
-            bot_marcar(base, cid, "enviada")
-        except urllib.error.HTTPError as e:
-            bot_marcar(base, cid, "error: " + _err_http(e))
-        except Exception as e:
-            bot_marcar(base, cid, "error: " + str(e))
-    except Exception as e:
-        print("bot: error en reintento: %s" % e, flush=True)
-
-
 RE_CORREO = re.compile(r"[A-Za-z0-9._%+\-]{1,64}@[A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)+")
 RE_CORREO_OK = re.compile(r"^[^@\s,;]+@[^@\s,;]+\.[^@\s,;]+$")
 
@@ -626,7 +544,7 @@ def bot_nuevo_participante(base, cid, src):
         _http_json("http://127.0.0.1:5013/api/store/qslcola/email", {"emails": {base: email}})
     except Exception as e:
         print("bot: no se pudo guardar el correo en la cola: %s" % e, flush=True)
-    _bot_decir(src, c["resp_ok"], base)
+    _bot_decir(src, c["resp_ok"] if c.get("auto") else (c.get("resp_ok_manual") or BOT_DEFAULTS["resp_ok_manual"]), base)
     if c.get("auto"):
         bot_enviar_qsl(base, cid, c)
     else:
@@ -1095,6 +1013,152 @@ def api_beacon():
     return jsonify({"ok": True, "enviado": enviado, "paquete": paquete_baliza() if enviado else None})
 
 
+# BOTB1-INICIO
+_REQ = {"t": 0.0, "d": None}
+
+
+def bot_codigo(q):
+    q = str(q or "").lower()
+    for pref, cod in (("esperando correo", "esperando_correo"), ("sin correo", "sin_correo"), ("enviando", "enviando"),
+                      ("enviada", "enviada"), ("error", "error"), ("en cola", "en_cola")):
+        if q.startswith(pref):
+            return cod
+    return "nuevo" if not q else "otro"
+
+
+def bot_sync_cola(cid, filas):
+    # si una QSL se envio a mano desde la cola, el estado del participante lo refleja
+    pend = [r for r in filas if bot_codigo(r["qsl"]) in ("en_cola", "error", "enviando")]
+    if not pend:
+        return {}
+    try:
+        estados = {q.get("uid"): q.get("estado") for q in _http_json("http://127.0.0.1:5013/api/store/qslcola", timeout=3)}
+    except Exception:
+        return {}
+    cambios = {}
+    for r in pend:
+        if estados.get("aprs|%s|%s" % (r["call"], cid)) == "enviada":
+            bot_marcar(r["call"], cid, "enviada (desde la cola)")
+            cambios[r["call"]] = "enviada (desde la cola)"
+    return cambios
+
+
+def _req_get(url, timeout=3):
+    try:
+        return _http_json(url, timeout=timeout)
+    except Exception:
+        return None
+
+
+def _es_servicio_enlaces(url):
+    # el servicio de enlaces responde 404 con una pagina "Enlace vencido" para un token inexistente
+    try:
+        urllib.request.urlopen(url + "/q/aaaaaaaaaa", timeout=5)
+        return True, ""
+    except urllib.error.HTTPError as e:
+        try:
+            return b"Enlace vencido" in e.read(2000), ""
+        except Exception:
+            return False, ""
+    except Exception as e:
+        return False, str(e)
+
+
+def _req_enlace():
+    try:
+        with open(os.path.join(BASE_DIR, "qsl_link.json")) as f:
+            base = str(json.load(f).get("base", "")).strip().rstrip("/")
+    except Exception:
+        base = ""
+    if not base:
+        return "aviso", "sin enlace temporal (opcional): la QSL se envía solo por correo"
+    if not re.fullmatch(r"https?://[A-Za-z0-9.\-]+(:\d+)?", base):
+        return "error", "qsl_link.json tiene una dirección inválida: %s" % base[:50]
+    ok, err = _es_servicio_enlaces(base)
+    if ok:
+        return "ok", "%s responde" % base[:60]
+    if any(k in err for k in ("Name or service", "Temporary failure", "nodename nor servname", "getaddrinfo")):
+        return "error", "el dominio %s no existe (¿quedó el nombre de ejemplo en qsl_link.json?)" % base[:60]
+    if _es_servicio_enlaces("http://127.0.0.1:5023")[0]:
+        return "error", "%s no responde desde internet (revisa Tailscale Funnel)" % base[:60]
+    return "error", "el servicio de enlaces (puerto 5023) no está corriendo"
+
+
+def bot_requisitos():
+    ahora = time.time()
+    if _REQ["d"] and ahora - _REQ["t"] < 15:
+        return _REQ["d"]
+    c = bot_cfg()
+    out = []
+
+    def add(id_, nombre, nivel, texto, tab=None):
+        out.append({"id": id_, "nombre": nombre, "nivel": nivel, "texto": texto, "tab": tab})
+    if c["palabras"]:
+        add("palabras", "Palabras clave", "ok", "%d definida(s)" % len(c["palabras"]), "bot")
+    else:
+        add("palabras", "Palabras clave", "error", "no hay ninguna: el bot no atiende a nadie", "bot")
+    if not c.get("inicio") and not c.get("fin"):
+        add("ventana", "Período del concurso", "aviso", "sin fechas: el bot atiende siempre", "bot")
+    elif bot_en_ventana(c):
+        add("ventana", "Período del concurso", "ok", "dentro de las fechas", "bot")
+    else:
+        add("ventana", "Período del concurso", "aviso", "fuera de las fechas: responde \"concurso no disponible\"", "bot")
+    if ST["conectado"] and ST["verificado"]:
+        add("aprs", "APRS-IS", "ok", "conectado y verificado (%s)" % mi_call(), "aprs")
+    elif ST["conectado"]:
+        add("aprs", "APRS-IS", "error", "conectado pero sin verificar: no puede responder (revisa indicativo y passcode)", "aprs")
+    else:
+        add("aprs", "APRS-IS", "error", "sin conexión: no recibe ni responde mensajes", "aprs")
+    if _req_get("http://127.0.0.1:5013/api/store/health") is None:
+        add("cola", "Cola QSL (almacén)", "error", "el almacén no responde (puerto 5013)")
+    else:
+        add("cola", "Cola QSL (almacén)", "ok", "disponible")
+    m = _req_get("http://127.0.0.1:5017/api/mail/status")
+    if m is None:
+        add("gmail", "Correo (Gmail)", "error" if c.get("auto") else "aviso", "el servicio de correo no responde (puerto 5017)", "gmail")
+    elif not m.get("configured"):
+        add("gmail", "Correo (Gmail)", "error" if c.get("auto") else "aviso",
+            "sin configurar" + ("; el envío automático no puede enviar" if c.get("auto") else ""), "gmail")
+    elif m.get("ok") is False:
+        add("gmail", "Correo (Gmail)", "error", "el último envío falló: %s" % str(m.get("error"))[:80], "gmail")
+    else:
+        add("gmail", "Correo (Gmail)", "ok", "%s · %s de %s envíos hoy" % (m.get("address", ""), m.get("enviados_hoy", 0), m.get("limite_diario", "?")), "gmail")
+    d = _req_get("http://127.0.0.1:5013/api/store/config/pcbox-qsl-design")
+    if d is not None and not d.get("value"):
+        add("diseno", "Diseño de la QSL", "aviso", "sin diseño guardado: se usará el diseño por defecto", "qsl")
+    elif d is not None:
+        add("diseno", "Diseño de la QSL", "ok", "guardado")
+    import importlib.util as _ilu
+    if _ilu.find_spec("PIL") is None:
+        add("pillow", "Dibujo de la QSL (Pillow)", "error", "falta Pillow: sudo apt install -y python3-pil")
+    nivel, texto = _req_enlace()
+    add("enlace", "Enlace temporal de la QSL", nivel, texto)
+    lib = _req_get("http://127.0.0.1:5018/api/contactos")
+    if lib is None:
+        add("libreta", "Libreta de contactos", "aviso", "no responde (puerto 5018); se usará la cola QSL y QRZ", "contactos")
+    else:
+        add("libreta", "Libreta de contactos", "ok", "%d contacto(s) con correo" % sum(1 for x in lib if x.get("email")), "contactos")
+    q = _req_get("http://127.0.0.1:5015/api/qrz/status")
+    if q is None:
+        add("qrz", "QRZ.com", "aviso", "el servicio no responde (puerto 5015); el bot igual pregunta el correo por APRS", "qrz")
+    elif not q.get("configured"):
+        add("qrz", "QRZ.com", "aviso", "sin configurar; el bot igual pregunta el correo por APRS", "qrz")
+    elif q.get("ok") is False:
+        add("qrz", "QRZ.com", "aviso", "error: %s" % str(q.get("error"))[:60], "qrz")
+    else:
+        add("qrz", "QRZ.com", "ok", "configurado")
+    res = {"checks": out, "errores": sum(1 for x in out if x["nivel"] == "error"),
+           "avisos": sum(1 for x in out if x["nivel"] == "aviso")}
+    _REQ.update(t=ahora, d=res)
+    return res
+
+
+@app.route("/api/aprs/bot/requisitos")
+def api_bot_requisitos():
+    return jsonify(bot_requisitos())
+# BOTB1-FIN
+
+
 @app.route("/api/aprs/bot", methods=["GET"])
 def api_bot_get():
     c = bot_cfg()
@@ -1114,8 +1178,12 @@ def api_bot_get():
         estado = "Activo: escuchando mensajes APRS" + ("" if ST["verificado"] else " (SIN conexión verificada a APRS-IS)")
     else:
         estado = "Activado, fuera del período del concurso"
-    return jsonify({"config": c, "estado": estado, "total": total,
-                    "participantes": [{"call": r["call"], "peer": r["peer"], "ts": r["ts"], "texto": r["texto"], "qsl": r["qsl"]} for r in filas]})
+    cambios = bot_sync_cola(cid, filas)
+    part = []
+    for r in filas:
+        q = cambios.get(r["call"], r["qsl"])
+        part.append({"call": r["call"], "peer": r["peer"], "ts": r["ts"], "texto": r["texto"], "qsl": q, "cod": bot_codigo(q)})
+    return jsonify({"config": c, "estado": estado, "total": total, "participantes": part})
 
 
 @app.route("/api/aprs/bot", methods=["POST"])
@@ -1153,18 +1221,19 @@ def api_bot_post():
     if not nombre:
         return jsonify({"error": "falta el nombre del concurso"}), 400
     resp_ok = str(b.get("resp_ok", "") or BOT_DEFAULTS["resp_ok"])[:200]
+    resp_ok_manual = str(b.get("resp_ok_manual", "") or BOT_DEFAULTS["resp_ok_manual"])[:200]
     resp_dup = str(b.get("resp_dup", "") or BOT_DEFAULTS["resp_dup"])[:200]
     resp_pregunta = str(b.get("resp_pregunta", "") or BOT_DEFAULTS["resp_pregunta"])[:200]
     resp_mail_ok = str(b.get("resp_mail_ok", "") or BOT_DEFAULTS["resp_mail_ok"])[:200]
     resp_no = str(b.get("resp_no", "") or BOT_DEFAULTS["resp_no"])[:200]
-    for t_ in (resp_ok, resp_dup, resp_pregunta, resp_mail_ok, resp_no):
+    for t_ in (resp_ok, resp_ok_manual, resp_dup, resp_pregunta, resp_mail_ok, resp_no):
         peor = a_ascii(t_.replace("{call}", "AAAAAA9A").replace("{op}", CFG["callsign"].upper())
                        .replace("{mail}", "j***@gmail.com").replace("{fecha}", "19/10/26"))
         if len(peor) > 67:
             return jsonify({"error": "una respuesta supera los 67 caracteres que permite APRS (%d)" % len(peor)}), 400
     c = {"enabled": bool(b.get("enabled")), "nombre": nombre, "palabras": limpias,
          "inicio": fechas["inicio"], "fin": fechas["fin"],
-         "resp_ok": resp_ok, "resp_dup": resp_dup,
+         "resp_ok": resp_ok, "resp_ok_manual": resp_ok_manual, "resp_dup": resp_dup,
          "resp_pregunta": resp_pregunta, "resp_mail_ok": resp_mail_ok, "resp_no": resp_no,
          "max_por_dia": mx, "auto": bool(b.get("auto")),
          "q_freq": _qtxt(b, "q_freq", 12), "q_band": _qtxt(b, "q_band", 8), "q_mode": _qtxt(b, "q_mode", 10),
@@ -1190,32 +1259,9 @@ def api_bot_reset():
     return jsonify({"ok": True})
 
 
-def bot_rearmar():
-    # Tras un reinicio retoma los reintentos de correo que se perdieron (los Timer viven en memoria)
-    try:
-        con = db()
-        try:
-            filas = con.execute("SELECT concurso, call FROM bot_part WHERE qsl LIKE 'en cola (sin correo%' "
-                                "AND qsl NOT LIKE '%en QRZ)'").fetchall()
-        finally:
-            con.close()
-        actual = bot_id(bot_cfg())
-        i = 0
-        for r in filas:
-            if r["concurso"] != actual:
-                continue
-            t = threading.Timer(30 + 10 * i, bot_reintentar, args=(r["call"], r["concurso"], 1))
-            t.daemon = True
-            t.start()
-            i += 1
-    except Exception as e:
-        print("bot: no se pudieron rearmar reintentos: %s" % e, flush=True)
-
-
 if __name__ == "__main__":
     init_db()
     cargar_config()
-    bot_rearmar()
     for fn in (conectar_loop, reintentos_loop, baliza_loop):
         threading.Thread(target=fn, daemon=True).start()
     app.run(host="0.0.0.0", port=PORT)

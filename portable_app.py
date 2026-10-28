@@ -55,6 +55,7 @@ MODULOS = [
     ("sismos", "sismos_service.py"),
     ("aprs", "aprs_service.py"),
     ("salud", "salud_lite.py"),
+    ("rec", "rec_service.py"),
 ]
 
 
@@ -63,6 +64,7 @@ def _dependencias():
     asi que PyInstaller no los ve): sin esta lista el ejecutable saldria sin ellos."""
     import base64, collections, csv, datetime, email.message, email.utils, io, math, smtplib, sqlite3, ssl, unicodedata  # noqa
     import subprocess, xml.etree.ElementTree, requests, psutil, sgp4.api, socketio, engineio, websocket  # noqa
+    import array, ctypes, wave, shutil, urllib.request, concurrent.futures  # noqa
 
 
 def log(*a):
@@ -89,6 +91,7 @@ ARRANQUE = {
     "aprs": lambda m: (m.init_db(), m.cargar_config(), m.bot_rearmar(),
                        [hilo(f) for f in (m.conectar_loop, m.reintentos_loop, m.baliza_loop)]),
     "salud": lambda m: hilo(m.bucle),
+    "rec": lambda m: hilo(m.bucle),
 }
 
 
@@ -330,6 +333,10 @@ def cargar_modulos(ctx):
             log("  - %s: archivo no incluido, se omite" % archivo)
             continue
         try:
+            if clave == "rec":
+                if "mail" in cargados:
+                    sys.modules["mail_service"] = cargados["mail"]
+                os.environ.setdefault("REC_DIR", os.path.join(str(ctx["data"]), "dmr_rec"))
             src, av = parchear(clave, ruta.read_text(encoding="utf-8"), ctx)
             for a in av:
                 log("  ! %s: parche sin aplicar (%s)" % (archivo, a))

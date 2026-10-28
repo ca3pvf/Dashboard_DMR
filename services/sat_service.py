@@ -185,6 +185,133 @@ def api_config():
         return jsonify({"ok": True, "config": vista_cfg(), "resueltos": ST["resueltos"], "no_encontrados": ST["no_encontrados"]})
 
 
+# SATRUTA-INICIO
+from flask import Response as _Resp
+
+
+def subpunto(sat, t):
+    # latitud, longitud y altura (km) bajo el satelite en el instante t
+    jd = t / 86400.0 + 2440587.5
+    e, r, _ = sat.sgp4(math.floor(jd), jd - math.floor(jd))
+    if e:
+        return None
+    th = gmst(jd)
+    c, s = math.cos(th), math.sin(th)
+    x, y, z = r[0] * c + r[1] * s, -r[0] * s + r[1] * c, r[2]
+    a, f = 6378.137, 1 / 298.257223563
+    e2 = f * (2 - f)
+    p = math.hypot(x, y)
+    lat = math.atan2(z, p * (1 - e2))
+    for _ in range(6):
+        n = a / math.sqrt(1 - e2 * math.sin(lat) ** 2)
+        h = p / math.cos(lat) - n if abs(lat) < 1.4 else z / math.sin(lat) - n * (1 - e2)
+        lat = math.atan2(z, p * (1 - e2 * n / (n + h)))
+    n = a / math.sqrt(1 - e2 * math.sin(lat) ** 2)
+    h = p / math.cos(lat) - n if abs(lat) < 1.4 else z / math.sin(lat) - n * (1 - e2)
+    return math.degrees(lat), math.degrees(math.atan2(y, x)), h
+
+
+def radio_visibilidad(h, el_deg):
+    # radio (km) del circulo desde donde se ve el satelite sobre la elevacion dada
+    re_, el = 6371.0, math.radians(el_deg)
+    return re_ * (math.acos(re_ * math.cos(el) / (re_ + h)) - el)
+
+
+@app.route("/api/sat/track")
+def api_track():
+    try:
+        n, a, l = int(request.args["norad"]), float(request.args["aos"]), float(request.args["los"])
+        if not 0 < l - a <= 3 * 3600:
+            raise ValueError
+    except (KeyError, ValueError):
+        return jsonify({"error": "parámetros inválidos"}), 400
+    try:
+        cat = parsear(open(TLE_PATH).read())
+        ap = json.load(open(APRS_CFG))
+        o = observador(float(ap["lat"]), float(ap["lon"]))
+    except Exception as e:
+        return jsonify({"error": "faltan datos (TLE o ubicación): %s" % e}), 503
+    if n not in cat:
+        return jsonify({"error": "satélite no encontrado en los TLE"}), 404
+    nombre, l1, l2 = cat[n]
+    sat = Satrec.twoline2rv(l1, l2)
+    pts, t = [], a - 900
+    while t <= l + 900:
+        sp, lk = subpunto(sat, t), look(sat, t, o)
+        if sp:
+            pts.append([int(t), round(sp[0], 3), round(sp[1], 3), round(lk[0], 1) if lk else None, round(lk[1]) if lk else None])
+        t += 20
+    if not pts:
+        return jsonify({"error": "no se pudo calcular la órbita"}), 500
+    h = subpunto(sat, (a + l) / 2)[2]
+    return jsonify({"sat": nombre, "norad": n, "aos": a, "los": l, "alt_km": round(h),
+                    "obs": {"lat": float(ap["lat"]), "lon": float(ap["lon"])}, "puntos": pts,
+                    "radio_horizonte_km": round(radio_visibilidad(h, 0)),
+                    "radio_minimo_km": round(radio_visibilidad(h, float(cfg()["min_el"]))), "min_el": cfg()["min_el"]})
+
+
+PAGINA_RUTA = """<!doctype html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Ruta del satélite</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<style>html,body{height:100%;margin:0;font:14px system-ui,sans-serif;background:#101418;color:#e8eaed}
+#cab{padding:10px 14px;background:#161b22;border-bottom:1px solid #2a3340}
+#cab h1{margin:0 0 4px;font-size:1.15em;color:#ffb020}#info{display:flex;flex-wrap:wrap;gap:4px 18px;font-size:.9em;color:#c9d1d9}
+#mapa{height:calc(100% - 92px)}.k{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:5px;vertical-align:middle}
+#pie{padding:4px 14px;font-size:.75em;color:#8a96a3}</style></head><body>
+<div id="cab"><h1 id="tit">Calculando ruta…</h1><div id="info"></div></div><div id="mapa"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const hora = t => new Date(t * 1000).toLocaleString('es-CL', {dateStyle: 'short', timeStyle: 'medium'});
+function trozos(pts, ok){
+  const out = []; let cur = [], prev = null;
+  pts.forEach(p => {
+    if(!ok(p)){ if(cur.length > 1) out.push(cur); cur = []; prev = null; return; }
+    if(prev && Math.abs(p[2] - prev[2]) > 180){ if(cur.length > 1) out.push(cur); cur = []; }
+    cur.push([p[1], p[2]]); prev = p;
+  });
+  if(cur.length > 1) out.push(cur);
+  return out;
+}
+function dibujar(d){
+  const mapa = L.map('mapa', {worldCopyJump: true}).setView([d.obs.lat, d.obs.lon], 3);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 12, attribution: '&copy; OpenStreetMap'}).addTo(mapa);
+  const P = d.puntos, dentro = p => p[0] >= d.aos && p[0] <= d.los;
+  trozos(P, () => true).forEach(s => L.polyline(s, {color: '#7aa2ff', weight: 2, dashArray: '6 6', opacity: .8}).addTo(mapa));
+  const seg = trozos(P, dentro);
+  seg.forEach(s => L.polyline(s, {color: '#ff9f1a', weight: 5}).addTo(mapa));
+  L.circle([d.obs.lat, d.obs.lon], {radius: d.radio_horizonte_km * 1000, color: '#39ff14', weight: 1, fillOpacity: .04, dashArray: '4 6'}).addTo(mapa);
+  L.circle([d.obs.lat, d.obs.lon], {radius: d.radio_minimo_km * 1000, color: '#39ff14', weight: 1, fillOpacity: .08}).addTo(mapa);
+  L.circleMarker([d.obs.lat, d.obs.lon], {radius: 7, color: '#fff', fillColor: '#2f81f7', fillOpacity: 1}).addTo(mapa).bindTooltip('Tu ubicación');
+  const pas = P.filter(dentro);
+  const cerca = t => P.reduce((m, p) => Math.abs(p[0] - t) < Math.abs(m[0] - t) ? p : m, P[0]);
+  const ini = pas.length ? pas[0] : cerca(d.aos), fin = pas.length ? pas[pas.length - 1] : cerca(d.los);
+  const max = (pas.length ? pas : P).reduce((m, p) => (p[3] || -99) > (m[3] || -99) ? p : m);
+  [[ini, '#2ecc71', 'Inicio (AOS)'], [max, '#ffb020', 'Máxima elevación'], [fin, '#ff5d5d', 'Fin (LOS)']].forEach(x =>
+    L.circleMarker([x[0][1], x[0][2]], {radius: 8, color: '#fff', weight: 2, fillColor: x[1], fillOpacity: 1}).addTo(mapa)
+      .bindTooltip(x[2] + ' · ' + hora(x[0][0]).split(', ').pop(), {permanent: true, direction: 'top', offset: [0, -6]}));
+  const todos = pas.length ? pas.map(p => [p[1], p[2]]) : P.map(p => [p[1], p[2]]);
+  todos.push([d.obs.lat, d.obs.lon]);
+  mapa.fitBounds(L.latLngBounds(todos).pad(.25));
+  $('tit').textContent = d.sat + ' — pasada del ' + hora(d.aos).split(', ')[0];
+  const dur = Math.round(d.los - d.aos), kk = c => '<span class="k" style="background:' + c + '"></span>';
+  $('info').innerHTML = '<span>' + kk('#2ecc71') + 'Inicio ' + hora(ini[0]).split(', ').pop() + ' · acimut ' + ini[4] + '°</span>' +
+    '<span>' + kk('#ffb020') + 'Máx ' + (max[3] != null ? Math.round(max[3]) : '--') + '° a las ' + hora(max[0]).split(', ').pop() + ' · acimut ' + max[4] + '°</span>' +
+    '<span>' + kk('#ff5d5d') + 'Fin ' + hora(fin[0]).split(', ').pop() + ' · acimut ' + fin[4] + '°</span>' +
+    '<span>Duración ' + Math.floor(dur / 60) + ' min ' + (dur % 60) + ' s</span><span>Altura ' + d.alt_km + ' km</span>' +
+    '<span>Naranja: tramo de la pasada · azul punteado: ±15 min de órbita · verde: zona de visibilidad (horizonte y elevación mínima ' + d.min_el + '°)</span>';
+}
+fetch('track' + location.search).then(r => r.json().then(d => { if(!r.ok) throw new Error(d.error || ('error ' + r.status)); return d; }))
+  .then(dibujar).catch(e => { $('tit').textContent = 'No se pudo calcular la ruta'; $('info').textContent = e.message; });
+</script><div id="pie">La ruta es aproximada (TLE de CelesTrak). El mapa usa OpenStreetMap y requiere internet en este navegador.</div></body></html>"""
+
+
+@app.route("/api/sat/ruta")
+def api_ruta():
+    return _Resp(PAGINA_RUTA, mimetype="text/html")
+# SATRUTA-FIN
+
+
 if __name__ == "__main__":
     threading.Thread(target=bucle, daemon=True).start()
     app.run(host="0.0.0.0", port=5020, threaded=True)
