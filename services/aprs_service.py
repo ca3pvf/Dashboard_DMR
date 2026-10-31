@@ -48,8 +48,8 @@ DEFAULTS = {
     "passcode": "",                    # vacio = se calcula desde el indicativo
     "server": "rotate.aprs2.net",
     "port": 14580,
-    "lat": 0.0,
-    "lon": 0.0,
+    "lat": -33.7524010,
+    "lon": -70.7359641,
     "radius_km": 100,
     "beacon_enabled": False,
     "beacon_interval_min": 30,
@@ -227,6 +227,8 @@ def init_db():
         intentos INTEGER NOT NULL DEFAULT 0, prox REAL NOT NULL DEFAULT 0,
         leido INTEGER NOT NULL DEFAULT 0)""")
     con.execute("CREATE INDEX IF NOT EXISTS idx_msg_ts ON messages(ts)")
+    if "origen" not in [r[1] for r in con.execute("PRAGMA table_info(messages)")]:
+        con.execute("ALTER TABLE messages ADD COLUMN origen TEXT NOT NULL DEFAULT ''")
     con.execute("""CREATE TABLE IF NOT EXISTS bot_part (
         concurso TEXT NOT NULL, call TEXT NOT NULL, peer TEXT, ts REAL NOT NULL, texto TEXT,
         aviso REAL NOT NULL DEFAULT 0, PRIMARY KEY (concurso, call))""")
@@ -298,12 +300,12 @@ def registrar_estacion(src, pos):
                 ESTACIONES.pop(k, None)
 
 
-def guardar_mensaje(direccion, peer, texto, msgid, estado, leido):
+def guardar_mensaje(direccion, peer, texto, msgid, estado, leido, origen=""):
     con = db()
     try:
         cur = con.execute(
-            "INSERT INTO messages(ts,dir,peer,text,msgid,estado,leido) VALUES(?,?,?,?,?,?,?)",
-            (time.time(), direccion, peer, texto, msgid, estado, leido))
+            "INSERT INTO messages(ts,dir,peer,text,msgid,estado,leido,origen) VALUES(?,?,?,?,?,?,?,?)",
+            (time.time(), direccion, peer, texto, msgid, estado, leido, origen))
         con.execute("DELETE FROM messages WHERE id < (SELECT MAX(id) FROM messages) - 2000")
         con.commit()
         return cur.lastrowid
@@ -343,9 +345,10 @@ def procesar_mensaje(src, payload):
         finally:
             con.close()
         if dup:
+            print("bot: ignorado %s: mensaje repetido (mismo numero {%s} en la ultima hora)" % (src, msgid), flush=True)
             return
-    guardar_mensaje("in", src, texto.strip(), msgid, "recibido", 0)
-    threading.Thread(target=bot_procesar, args=(src, texto.strip()), daemon=True).start()
+    mid = guardar_mensaje("in", src, texto.strip(), msgid, "recibido", 0)
+    threading.Thread(target=bot_procesar, args=(src, texto.strip(), mid), daemon=True).start()
 
 
 # ---------------- bot de concurso (palabra clave -> QSL a la cola) ----------------
@@ -358,6 +361,8 @@ BOT_DEFAULTS = {
     "resp_ok": "Recibido {call}! QSL en camino a tu correo. Gracias, 73 de {op}",
     "resp_ok_manual": "Recibido {call}! Anotado, te enviare la QSL. 73 de {op}",
     "resp_dup": "{call} ya estabas registrado en el concurso. 73 de {op}",
+    "resp_mal": "PALABRA INCORRECTA, LA CLAVE ES: {clave}",
+    "resp_fuera": "CONCURSO NO DISPONIBLE",
     "resp_pregunta": "Recibido {call}! QSL por mail? Responde MAIL tu@correo.com",
     "resp_mail_ok": "Gracias {call}! QSL enviada a {mail}. 73 de {op}",
     "resp_no": "Ok {call}. Confirmo QSL por APRS el {fecha}. 73 de {op}",
@@ -427,7 +432,7 @@ def enviar_mensaje(destino, texto):
     finally:
         con.close()
     msgid = str(n if n < 100000 else 1)
-    guardar_mensaje("out", destino, texto, msgid, "pendiente", 1)
+    guardar_mensaje("out", destino, texto, msgid, "pendiente", 1, "bot")
     if enviar_paquete(paquete_mensaje(destino, texto, msgid)):
         con = db()
         try:
@@ -505,21 +510,48 @@ def _correo_conocido(base):
     return None, ""
 
 
+def _datos_qsl(base, c, ahora):
+    return {"call": base, "op": CFG["callsign"].upper(), "time_utc": ahora, "freq": c.get("q_freq", ""),
+            "band": c.get("q_band", ""), "mode": c.get("q_mode", "APRS"), "rst_s": c.get("q_rst_s", "59"),
+            "rst_r": c.get("q_rst_r", "59"), "comments": c.get("q_comments", "")}
+
+
+def _url_valida(u):
+    return u if isinstance(u, str) and re.fullmatch(r"https?://[A-Za-z0-9.\-]+(:\d+)?/q/[A-Za-z0-9_-]{10}", u) else None
+
+
 def bot_enviar_qsl(base, cid, c):
-    """Dibuja y envia la QSL al correo que la cola QSL tiene para el indicativo. True si se envio."""
+    """Dibuja y envia la QSL al correo de la cola QSL. False si fallo; si se envio, la URL temporal (str) o True si no hay URL."""
     bot_marcar(base, cid, "enviando...")
     ahora = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
     try:
-        _http_json("http://127.0.0.1:5017/api/mail/auto",
-                   {"call": base, "op": CFG["callsign"].upper(), "time_utc": ahora, "freq": c.get("q_freq", ""),
-                    "band": c.get("q_band", ""), "mode": c.get("q_mode", "APRS"), "rst_s": c.get("q_rst_s", "59"),
-                    "rst_r": c.get("q_rst_r", "59"), "comments": c.get("q_comments", "")}, timeout=90)
+        r = _http_json("http://127.0.0.1:5017/api/mail/auto", _datos_qsl(base, c, ahora), timeout=90)
         bot_marcar(base, cid, "enviada")
-        return True
+        return _url_valida(r.get("url")) or True
     except urllib.error.HTTPError as e:
         bot_marcar(base, cid, "error: " + _err_http(e))
     except Exception as e:
         bot_marcar(base, cid, "error: " + str(e))
+    return False
+
+
+def bot_enlace_solo(base, c):
+    """Crea solo el enlace temporal (sin correo). Devuelve la URL o None."""
+    ahora = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        r = _http_json("http://127.0.0.1:5017/api/mail/enlace", _datos_qsl(base, c, ahora), timeout=60)
+        return _url_valida(r.get("url"))
+    except Exception as e:
+        print("bot: no se pudo crear el enlace: %s" % e, flush=True)
+        return None
+
+
+def bot_decir_enlace(src, base, url):
+    """Segundo mensaje APRS con el enlace temporal. Nunca se recorta (limite 67 caracteres)."""
+    for t in ("QSL %s (10 min): %s" % (base, url), "QSL 10 min: " + url, url):
+        if len(a_ascii(t)) <= 67:
+            return _bot_decir(src, t, base)
+    print("bot: el enlace es muy largo para APRS (%d caracteres)" % len(url), flush=True)
     return False
 
 
@@ -546,7 +578,9 @@ def bot_nuevo_participante(base, cid, src):
         print("bot: no se pudo guardar el correo en la cola: %s" % e, flush=True)
     _bot_decir(src, c["resp_ok"] if c.get("auto") else (c.get("resp_ok_manual") or BOT_DEFAULTS["resp_ok_manual"]), base)
     if c.get("auto"):
-        bot_enviar_qsl(base, cid, c)
+        url = bot_enviar_qsl(base, cid, c)
+        if isinstance(url, str):
+            bot_decir_enlace(src, base, url)
     else:
         bot_marcar(base, cid, "en cola")
 
@@ -580,8 +614,11 @@ def bot_respuesta_correo(src, base, texto, c):
             bot_marcar(base, cid, "error al guardar el correo")
             return True
         if c.get("auto"):
-            if bot_enviar_qsl(base, cid, c):
+            url = bot_enviar_qsl(base, cid, c)
+            if url:
                 _bot_decir(src, c["resp_mail_ok"], base, mail=_ocultar(email))
+                if isinstance(url, str):
+                    bot_decir_enlace(src, base, url)
         else:
             bot_marcar(base, cid, "en cola (correo recibido)")
             _bot_decir(src, "Gracias {call}! Anote tu correo y te enviare la QSL. 73 de {op}", base)
@@ -589,11 +626,47 @@ def bot_respuesta_correo(src, base, texto, c):
     if _norm(texto) in ("no", "no gracias", "nop", "nope"):
         bot_marcar(base, cid, "sin correo (prefirio no)")
         _bot_decir(src, c["resp_no"], base, fecha=datetime.now().strftime("%d/%m/%y"))
+        if c.get("auto"):
+            url = bot_enlace_solo(base, c)
+            if url:
+                bot_marcar(base, cid, "sin correo (prefirio no; enlace enviado)")
+                bot_decir_enlace(src, base, url)
         return True
     return False
 
 
-def bot_procesar(src, texto):
+_bot_aviso_t = {}
+
+
+def _fmt_f(v):
+    try:
+        return datetime.strptime(v, "%Y-%m-%dT%H:%M").strftime("%d/%m %H:%M")
+    except (TypeError, ValueError):
+        return ""
+
+
+def _bot_avisar(src, base, plantilla, c):
+    """Respuesta de palabra incorrecta / concurso no disponible (max 1 cada 30 s por indicativo)."""
+    ahora = time.time()
+    clave = a_ascii(" o ".join(str(p) for p in c["palabras"]))
+    ex = {"inicio": _fmt_f(c.get("inicio", "")), "fin": _fmt_f(c.get("fin", ""))}
+    resto = plantilla.replace("{call}", base).replace("{op}", CFG["callsign"].upper()).replace("{clave}", "")
+    for k_, v_ in ex.items():
+        resto = resto.replace("{%s}" % k_, v_)
+    clave = clave[:max(0, 67 - len(a_ascii(resto)))]
+    with _bot_lock:
+        if ahora - _bot_aviso_t.get(base, 0) < 30:
+            return
+        _bot_aviso_t[base] = ahora
+        if len(_bot_aviso_t) > 500:
+            for k in [k for k, t in _bot_aviso_t.items() if ahora - t > 3600]:
+                _bot_aviso_t.pop(k, None)
+    if not _bot_aviso_permitido(base):
+        return
+    _bot_decir(src, plantilla, base, clave=clave, **ex)
+
+
+def bot_procesar(src, texto, mid=None):
     try:
         c = bot_cfg()
         if not c["enabled"] or not c["palabras"] or src == mi_call().upper():
@@ -601,13 +674,20 @@ def bot_procesar(src, texto):
         base = src.split("-")[0]
         if not re.fullmatch(r"[A-Z0-9]{3,8}", base) or not re.search(r"\d", base) or not re.search(r"[A-Z]", base):
             return
+        if _bot_ritmo_excedido(base):
+            return
         if bot_respuesta_correo(src, base, texto, c):
+            _marcar_origen(mid, "concurso")
             return
         if not bot_en_ventana(c):
+            _bot_avisar(src, base, c["resp_fuera"], c)
             return
         n = " " + _norm(texto) + " "
         if not any(" " + _norm(k) + " " in n for k in c["palabras"] if _norm(k)):
+            print("bot: ignorado %s: sin palabra clave (%r)" % (src, texto[:40]), flush=True)
+            _bot_avisar(src, base, c["resp_mal"], c)
             return
+        _marcar_origen(mid, "concurso")
         cid = bot_id(c)
         ts = time.time()
         inicio_dia = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
@@ -627,19 +707,14 @@ def bot_procesar(src, texto):
                 plantilla = c["resp_dup"]
             else:
                 plantilla = None
+                print("bot: %s ya estaba registrado y ya se le aviso hace menos de 1 hora; sin respuesta" % base, flush=True)
             con.commit()
         finally:
             con.close()
         if ya is None:
             threading.Thread(target=bot_nuevo_participante, args=(base, cid, src), daemon=True).start()
         if plantilla:
-            with _bot_lock:
-                _bot_resp[:] = [t for t in _bot_resp if ts - t < 3600]
-                if len(_bot_resp) >= 60:
-                    return
-                _bot_resp.append(ts)
-            txt = plantilla.replace("{call}", base).replace("{op}", CFG["callsign"].upper())
-            enviar_mensaje(src, txt)
+            _bot_decir(src, plantilla, base)
     except Exception as e:
         print("bot: error: %s" % e, flush=True)
 
@@ -794,7 +869,7 @@ def api_messages():
     con = db()
     try:
         filas = con.execute(
-            "SELECT id, ts, dir, peer, text, estado, intentos FROM messages ORDER BY id DESC LIMIT 100").fetchall()
+            "SELECT id, ts, dir, peer, text, estado, intentos, origen FROM messages ORDER BY id DESC LIMIT 100").fetchall()
     finally:
         con.close()
     return jsonify([dict(r) for r in reversed(filas)])
@@ -1159,6 +1234,95 @@ def api_bot_requisitos():
 # BOTB1-FIN
 
 
+# BOTB2-INICIO
+_bot_ritmo = {}          # indicativo -> marcas de tiempo de los mensajes que ha enviado
+_bot_silencio = {}       # indicativo -> hasta cuando se ignora
+BOT_RITMO_MAX, BOT_RITMO_VENT, BOT_SILENCIO = 6, 600, 3600
+_bot_avisos_h = []       # marcas de tiempo de los avisos (palabra incorrecta / fuera de fecha) de la ultima hora
+_bot_avisos_call = {}    # indicativo -> marcas de tiempo de avisos en 24 h
+BOT_AVISOS_HORA, BOT_AVISOS_DIA_CALL = 20, 3
+
+
+def _bot_ritmo_excedido(base):
+    # un indicativo que manda mas de 6 mensajes en 10 minutos se ignora 1 hora (posible bucle entre bots o inundacion)
+    ahora = time.time()
+    with _bot_lock:
+        if _bot_silencio.get(base, 0) > ahora:
+            return True
+        marcas = [t for t in _bot_ritmo.get(base, []) if ahora - t < BOT_RITMO_VENT] + [ahora]
+        _bot_ritmo[base] = marcas
+        if len(_bot_ritmo) > 500:
+            for k in [k for k, v in _bot_ritmo.items() if not v or ahora - v[-1] > BOT_RITMO_VENT]:
+                _bot_ritmo.pop(k, None)
+        if len(marcas) > BOT_RITMO_MAX:
+            _bot_silencio[base] = ahora + BOT_SILENCIO
+            print("bot: %s envio %d mensajes en %d min: se ignora %d min (posible bucle entre bots)"
+                  % (base, len(marcas), BOT_RITMO_VENT // 60, BOT_SILENCIO // 60), flush=True)
+            return True
+    return False
+
+
+def _bot_aviso_permitido(base):
+    # los avisos tienen su propio tope: no pueden agotar las 60 respuestas por hora que necesitan los participantes
+    ahora = time.time()
+    with _bot_lock:
+        _bot_avisos_h[:] = [t for t in _bot_avisos_h if ahora - t < 3600]
+        propios = [t for t in _bot_avisos_call.get(base, []) if ahora - t < 86400]
+        if len(_bot_avisos_h) >= BOT_AVISOS_HORA or len(propios) >= BOT_AVISOS_DIA_CALL:
+            _bot_avisos_call[base] = propios
+            return False
+        _bot_avisos_h.append(ahora)
+        _bot_avisos_call[base] = propios + [ahora]
+        if len(_bot_avisos_call) > 500:
+            for k in [k for k, v in _bot_avisos_call.items() if not v or ahora - v[-1] > 86400]:
+                _bot_avisos_call.pop(k, None)
+    return True
+
+
+def _marcar_origen(mid, origen):
+    if not mid:
+        return
+    con = db()
+    try:
+        con.execute("UPDATE messages SET origen=? WHERE id=?", (origen, mid))
+        con.commit()
+    finally:
+        con.close()
+
+
+@app.route("/api/aprs/bot/resumen")
+def api_bot_resumen():
+    c = bot_cfg()
+    cid = bot_id(c)
+    inicio_dia = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+    con = db()
+    try:
+        filas = con.execute("SELECT call,ts,qsl FROM bot_part WHERE concurso=? ORDER BY ts DESC LIMIT 300", (cid,)).fetchall()
+        total = con.execute("SELECT COUNT(*) FROM bot_part WHERE concurso=?", (cid,)).fetchone()[0]
+    finally:
+        con.close()
+    cambios = bot_sync_cola(cid, filas)
+    conteo, ultimos = {}, []
+    for r in filas:
+        q = cambios.get(r["call"], r["qsl"])
+        cod = bot_codigo(q)
+        conteo[cod] = conteo.get(cod, 0) + 1
+        if len(ultimos) < 8:
+            ultimos.append({"call": r["call"], "ts": r["ts"], "qsl": q, "cod": cod})
+    if not c["enabled"]:
+        estado = "apagado"
+    elif not c["palabras"]:
+        estado = "sin palabras clave"
+    elif bot_en_ventana(c):
+        estado = "activo"
+    else:
+        estado = "fuera de fecha"
+    rq = bot_requisitos() if c["enabled"] else None
+    return jsonify({"nombre": c["nombre"], "estado": estado, "total": total, "hoy": sum(1 for r in filas if r["ts"] >= inicio_dia),
+                    "conteo": conteo, "ultimos": ultimos, "errores": rq["errores"] if rq else 0})
+# BOTB2-FIN
+
+
 @app.route("/api/aprs/bot", methods=["GET"])
 def api_bot_get():
     c = bot_cfg()
@@ -1226,15 +1390,18 @@ def api_bot_post():
     resp_pregunta = str(b.get("resp_pregunta", "") or BOT_DEFAULTS["resp_pregunta"])[:200]
     resp_mail_ok = str(b.get("resp_mail_ok", "") or BOT_DEFAULTS["resp_mail_ok"])[:200]
     resp_no = str(b.get("resp_no", "") or BOT_DEFAULTS["resp_no"])[:200]
-    for t_ in (resp_ok, resp_ok_manual, resp_dup, resp_pregunta, resp_mail_ok, resp_no):
+    resp_mal = str(b.get("resp_mal", "") or BOT_DEFAULTS["resp_mal"])[:200]
+    resp_fuera = str(b.get("resp_fuera", "") or BOT_DEFAULTS["resp_fuera"])[:200]
+    for t_ in (resp_ok, resp_ok_manual, resp_dup, resp_pregunta, resp_mail_ok, resp_no, resp_mal, resp_fuera):
         peor = a_ascii(t_.replace("{call}", "AAAAAA9A").replace("{op}", CFG["callsign"].upper())
-                       .replace("{mail}", "j***@gmail.com").replace("{fecha}", "19/10/26"))
+                       .replace("{clave}", "").replace("{inicio}", "01/01 00:00").replace("{fin}", "01/01 00:00").replace("{mail}", "j***@gmail.com").replace("{fecha}", "19/10/26"))
         if len(peor) > 67:
             return jsonify({"error": "una respuesta supera los 67 caracteres que permite APRS (%d)" % len(peor)}), 400
     c = {"enabled": bool(b.get("enabled")), "nombre": nombre, "palabras": limpias,
          "inicio": fechas["inicio"], "fin": fechas["fin"],
          "resp_ok": resp_ok, "resp_ok_manual": resp_ok_manual, "resp_dup": resp_dup,
          "resp_pregunta": resp_pregunta, "resp_mail_ok": resp_mail_ok, "resp_no": resp_no,
+         "resp_mal": resp_mal, "resp_fuera": resp_fuera,
          "max_por_dia": mx, "auto": bool(b.get("auto")),
          "q_freq": _qtxt(b, "q_freq", 12), "q_band": _qtxt(b, "q_band", 8), "q_mode": _qtxt(b, "q_mode", 10),
          "q_rst_s": _qtxt(b, "q_rst_s", 6), "q_rst_r": _qtxt(b, "q_rst_r", 6),
