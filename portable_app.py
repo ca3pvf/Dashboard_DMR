@@ -88,7 +88,7 @@ ARRANQUE = {
     "contactos": lambda m: (m.db().close(), hilo(m._auto_sync)),
     "sat": lambda m: hilo(m.bucle),
     "sismos": lambda m: (hilo(m.bucle), hilo(m.bucle_usgs)),
-    "aprs": lambda m: (m.init_db(), m.cargar_config(), m.bot_rearmar(),
+    "aprs": lambda m: (m.init_db(), m.cargar_config(),
                        [hilo(f) for f in (m.conectar_loop, m.reintentos_loop, m.baliza_loop)]),
     "salud": lambda m: hilo(m.bucle),
     "rec": lambda m: hilo(m.bucle),
