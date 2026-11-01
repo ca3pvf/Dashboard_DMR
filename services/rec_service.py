@@ -65,7 +65,7 @@ def hotspot():
         h = leer_json(os.path.join(BASE, "hotspots.json"), {})["hotspots"][0]
         return h.get("user") or "pi-star", h["ip"]
     except Exception:
-        return "pi-star", "192.168.1.35"
+        return "pi-star", ""
 
 
 def sincronizar():

@@ -48,8 +48,8 @@ DEFAULTS = {
     "passcode": "",                    # vacio = se calcula desde el indicativo
     "server": "rotate.aprs2.net",
     "port": 14580,
-    "lat": -33.7524010,
-    "lon": -70.7359641,
+    "lat": 0.0,
+    "lon": 0.0,
     "radius_km": 100,
     "beacon_enabled": False,
     "beacon_interval_min": 30,

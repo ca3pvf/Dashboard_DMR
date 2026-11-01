@@ -165,14 +165,14 @@ def _fmt(txt, d):
     return txt
 
 
-def _mensaje(cfg, to, dx, fecha, adjunto=None, nombre=None):
+def _mensaje(cfg, to, dx, fecha, adjunto=None, nombre=None, extra=""):
     op = cfg.get("op_call") or "@@CALL@@"
     vars_ = {"op": op, "dx": dx, "fecha": fecha}
     m = EmailMessage()
     m["From"] = formataddr((cfg.get("from_name") or op, cfg["address"]))
     m["To"] = to
     m["Subject"] = _fmt(cfg.get("subject") or DEF_SUBJECT, vars_).replace("\n", " ")[:200]
-    m.set_content(_fmt(cfg.get("body") or DEF_BODY, vars_))
+    m.set_content(_fmt(cfg.get("body") or DEF_BODY, vars_) + extra)
     if adjunto:
         m.add_attachment(adjunto, maintype="image", subtype="png", filename=nombre or "QSL.png")
     return m
@@ -327,9 +327,91 @@ def _item_cola(call):
         return None
 
 
+_render_lock = threading.Lock()
+
+
+LINK_DIR = os.environ.get("QSL_LINK_DIR", os.path.join(BASE, "qsl_tmp"))
+LINK_CFG = os.path.join(BASE, "qsl_link.json")      # {"base": "https://mi-dominio"}
+LINK_TTL = 600                                      # 10 minutos (igual que qsl_link_service.py)
+
+
+def _enlace_base():
+    try:
+        with open(LINK_CFG) as f:
+            b = str(json.load(f).get("base", "")).strip().rstrip("/")
+        return b if re.fullmatch(r"https?://[A-Za-z0-9.\-]+(:\d+)?", b) else ""
+    except Exception:
+        return ""
+
+
+def crear_enlace(png):
+    """Guarda la QSL en qsl_tmp/<token>.png (la publica qsl_link_service.py por 10 min). Devuelve la URL o None."""
+    base = _enlace_base()
+    if not base:
+        return None
+    import secrets
+    os.makedirs(LINK_DIR, exist_ok=True)
+    vivos, ahora = 0, time.time()
+    for n in os.listdir(LINK_DIR):
+        p = os.path.join(LINK_DIR, n)
+        try:
+            if ahora - os.path.getmtime(p) > LINK_TTL:
+                os.remove(p)
+            else:
+                vivos += 1
+        except OSError:
+            pass
+    if vivos >= 300:
+        return None
+    token = secrets.token_urlsafe(7)               # 10 caracteres
+    tmp = os.path.join(LINK_DIR, token + ".tmp")
+    with open(tmp, "wb") as f:
+        f.write(png)
+    os.replace(tmp, os.path.join(LINK_DIR, token + ".png"))
+    return "%s/q/%s" % (base, token)
+
+
+def _bg_actividad(b, bg_bytes):
+    """Si el bot manda la imagen propia de la actividad (bot_img/<archivo>.jpg), se usa en lugar del fondo global."""
+    im = str(b.get("img") or "")
+    if re.fullmatch(r"[a-z0-9_-]{4,40}\.jpg", im):
+        p = os.path.join(BASE, "bot_img", im)
+        if os.path.isfile(p):
+            with open(p, "rb") as f:
+                return f.read()
+    return bg_bytes
+
+
+def _dibujar(b, call, cfg):
+    """Dibuja la QSL con el diseno guardado. Devuelve (png, datos, op, None) o (None, None, None, (respuesta, codigo))."""
+    try:
+        import qsl_render
+    except ImportError:
+        return None, None, None, (jsonify({"error": "falta Pillow: sudo apt install -y python3-pil"}), 500)
+    try:
+        diseno = json.loads(_http(STORE + "/config/pcbox-qsl-design").get("value") or "{}")
+        bg = _http(STORE + "/config/pcbox-qsl-bg", timeout=30).get("value") or ""
+        bg_bytes = base64.b64decode(bg.split(",", 1)[1]) if bg.startswith("data:") and "," in bg else None
+    except Exception as e:
+        return None, None, None, (jsonify({"error": "no se pudo leer el diseno de la QSL: %s" % e}), 502)
+
+    def t(k, n):
+        return re.sub(r"[\x00-\x1f<>]", "", str(b.get(k, "") or "")).strip()[:n]
+    op = re.sub(r"[^A-Za-z0-9/]", "", str(b.get("op") or cfg.get("op_call") or "@@CALL@@")).upper()[:12]
+    datos = {"opCall": op, "dxCall": call, "fechaHora": t("time_utc", 19)[:16], "freq": t("freq", 12),
+             "band": t("band", 8), "mode": t("mode", 10), "rstS": t("rst_s", 6), "rstR": t("rst_r", 6),
+             "comments": t("comments", 120)}
+    try:
+        with _render_lock:
+            png = qsl_render.render(datos, diseno, _bg_actividad(b, bg_bytes))
+    except Exception as e:
+        return None, None, None, (jsonify({"error": "error dibujando la QSL: %s" % e}), 500)
+    return png, datos, op, None
+
+
 @app.route("/api/mail/auto", methods=["POST"])
 def api_auto():
-    """Dibuja la QSL en el servidor y la envia al correo que la cola QSL tiene para ese indicativo."""
+    """Dibuja la QSL, la envia al correo de la cola QSL y ademas crea un enlace temporal (10 min)."""
     cfg = leer_cfg()
     if not (cfg.get("address") and cfg.get("app_password")):
         return jsonify({"error": "Gmail sin configurar"}), 400
@@ -343,43 +425,44 @@ def api_auto():
     uid, to = item
     if enviados_hoy() >= DAILY_LIMIT:
         return jsonify({"error": "limite diario alcanzado (%d)" % DAILY_LIMIT}), 429
-    try:
-        import qsl_render
-    except ImportError:
-        return jsonify({"error": "falta Pillow: sudo apt install -y python3-pil"}), 500
-    try:
-        diseno = json.loads(_http(STORE + "/config/pcbox-qsl-design").get("value") or "{}")
-        bg = _http(STORE + "/config/pcbox-qsl-bg", timeout=30).get("value") or ""
-        bg_bytes = base64.b64decode(bg.split(",", 1)[1]) if bg.startswith("data:") and "," in bg else None
-    except Exception as e:
-        return jsonify({"error": "no se pudo leer el diseno de la QSL: %s" % e}), 502
-
-    def t(k, n):
-        return re.sub(r"[\x00-\x1f<>]", "", str(b.get(k, "") or "")).strip()[:n]
-    op = re.sub(r"[^A-Za-z0-9/]", "", str(b.get("op") or cfg.get("op_call") or "@@CALL@@")).upper()[:12]
-    datos = {"opCall": op, "dxCall": call, "fechaHora": t("time_utc", 19)[:16], "freq": t("freq", 12),
-             "band": t("band", 8), "mode": t("mode", 10), "rstS": t("rst_s", 6), "rstR": t("rst_r", 6),
-             "comments": t("comments", 120)}
-    try:
-        png = qsl_render.render(datos, diseno, bg_bytes)
-    except Exception as e:
-        return jsonify({"error": "error dibujando la QSL: %s" % e}), 500
+    png, datos, op, err = _dibujar(b, call, cfg)
+    if err:
+        return err
+    url = crear_enlace(png)
+    import qsl_render
     fecha = qsl_render._fecha(datos["fechaHora"])[0]
+    extra = ("\n\nTambien puedes descargarla aqui (el enlace vence en 10 minutos):\n" + url) if url else ""
     try:
-        _enviar(_mensaje(cfg, to, call, fecha, png, "QSL_%s_%s.png" % (op.replace("/", ""), call)), cfg)
+        _enviar(_mensaje(cfg, to, call, fecha, png, "QSL_%s_%s.png" % (op.replace("/", ""), call), extra), cfg)
     except Exception as e:
         ST.update(ok=False, error=_err_texto(e))
-        return jsonify({"error": _err_texto(e)}), 502
+        return jsonify({"error": _err_texto(e), "url": url}), 502
     sumar_envio()
     ST.update(ok=True, error=None)
     try:
         _http(STORE + "/qslcola/estado", {"uids": [uid], "estado": "enviada"})
     except Exception:
         pass
-    return jsonify({"ok": True, "to": to})
+    return jsonify({"ok": True, "to": to, "url": url})
 
 
-_render_lock = threading.Lock()
+@app.route("/api/mail/enlace", methods=["POST"])
+def api_enlace():
+    """Dibuja la QSL y devuelve solo el enlace temporal (sin correo)."""
+    cfg = leer_cfg()
+    b = request.get_json(silent=True) or {}
+    call = str(b.get("call", "")).strip().upper()
+    if not re.fullmatch(r"[A-Z0-9]{3,10}", call):
+        return jsonify({"error": "indicativo invalido"}), 400
+    if not _enlace_base():
+        return jsonify({"error": "falta la URL publica en qsl_link.json"}), 400
+    png, datos, op, err = _dibujar(b, call, cfg)
+    if err:
+        return err
+    url = crear_enlace(png)
+    if not url:
+        return jsonify({"error": "demasiados enlaces activos, intenta en unos minutos"}), 429
+    return jsonify({"ok": True, "url": url, "vence_s": LINK_TTL})
 
 
 @app.route("/api/qsl/descargar")
@@ -393,7 +476,7 @@ def api_qsl_descargar():
     call = re.sub(r"[^A-Za-z0-9/]", "", t("call", 14)).upper()
     if not call:
         return jsonify({"error": "falta el indicativo"}), 400
-    op = re.sub(r"[^A-Za-z0-9/]", "", t("op", 14) or cfg.get("op_call") or "CA3PVF").upper()
+    op = re.sub(r"[^A-Za-z0-9/]", "", t("op", 14) or cfg.get("op_call") or "@@CALL@@").upper()
     try:
         import qsl_render
     except ImportError:
