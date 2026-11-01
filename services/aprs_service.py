@@ -374,6 +374,28 @@ BOT_DEFAULTS = {
 _bot_lock = threading.Lock()
 _bot_resp = []                         # marcas de tiempo de respuestas, para limitar a 60 por hora
 RE_FECHA = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$")
+BOT_AGENDA = os.environ.get("APRS_AGENDA", os.path.join(BASE_DIR, "aprs_agenda.json"))
+BOT_IMG = os.path.join(BASE_DIR, "bot_img")
+RE_IMG = re.compile(r"^[a-z0-9_-]{4,40}\.jpg$")
+RE_ACT_ID = re.compile(r"^[a-z0-9]{4,12}$")
+CAMPOS_ACT = ("nombre", "palabras", "inicio", "fin", "q_freq", "q_band", "q_mode", "q_rst_s", "q_rst_r", "q_comments")
+
+
+def agenda_leer():
+    try:
+        with open(BOT_AGENDA) as f:
+            lst = json.load(f).get("actividades", [])
+        return [a for a in lst if isinstance(a, dict) and a.get("id") and a.get("inicio") and a.get("fin")]
+    except Exception:
+        return []
+
+
+def agenda_escribir(lst):
+    tmp = BOT_AGENDA + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump({"actividades": lst}, f, indent=2, ensure_ascii=False)
+    os.replace(tmp, BOT_AGENDA)
+
 
 
 def _norm(t):
@@ -388,6 +410,20 @@ def bot_cfg():
             c.update(json.load(f))
     except Exception:
         pass
+    ag = agenda_leer()
+    if ag:      # con agenda: los datos del concurso salen de la actividad vigente (o de la proxima / ultima si hay hueco)
+        ahora = datetime.now().strftime("%Y-%m-%dT%H:%M")
+        vig = next((a for a in ag if a["inicio"] <= ahora < a["fin"]), None)
+        hueco = vig is None
+        if hueco:
+            fut = [a for a in ag if a["inicio"] > ahora]
+            vig = min(fut, key=lambda a: a["inicio"]) if fut else max(ag, key=lambda a: a["fin"])
+        for k in CAMPOS_ACT:
+            if k in vig and (vig[k] != "" or k in ("q_comments", "q_freq", "q_band")):
+                c[k] = vig[k]
+        c["img"] = vig.get("img", "")
+        c["_act"] = vig["id"]
+        c["_hueco"] = hueco
     return c
 
 
@@ -399,11 +435,15 @@ def bot_guardar(c):
 
 
 def bot_id(c):
+    if c.get("_act"):
+        return "act:" + str(c["_act"])
     return _norm(c.get("nombre", "")) + "|" + str(c.get("inicio", ""))
 
 
 def bot_en_ventana(c, ahora=None):
     ahora = ahora or datetime.now()
+    if c.get("_hueco"):
+        return False
     try:
         if c.get("inicio") and ahora < datetime.strptime(c["inicio"], "%Y-%m-%dT%H:%M"):
             return False
@@ -513,7 +553,7 @@ def _correo_conocido(base):
 def _datos_qsl(base, c, ahora):
     return {"call": base, "op": CFG["callsign"].upper(), "time_utc": ahora, "freq": c.get("q_freq", ""),
             "band": c.get("q_band", ""), "mode": c.get("q_mode", "APRS"), "rst_s": c.get("q_rst_s", "59"),
-            "rst_r": c.get("q_rst_r", "59"), "comments": c.get("q_comments", "")}
+            "rst_r": c.get("q_rst_r", "59"), "comments": c.get("q_comments", ""), "img": c.get("img", "")}
 
 
 def _url_valida(u):
@@ -1406,8 +1446,138 @@ def api_bot_post():
          "q_freq": _qtxt(b, "q_freq", 12), "q_band": _qtxt(b, "q_band", 8), "q_mode": _qtxt(b, "q_mode", 10),
          "q_rst_s": _qtxt(b, "q_rst_s", 6), "q_rst_r": _qtxt(b, "q_rst_r", 6),
          "q_comments": _qtxt(b, "q_comments", 120)}
+    if agenda_leer():       # con agenda activa, los datos de la actividad no se pisan con los del formulario
+        try:
+            with open(BOT_PATH) as f:
+                raw = json.load(f)
+        except Exception:
+            raw = {}
+        for k in CAMPOS_ACT:
+            c[k] = raw.get(k, [] if k == "palabras" else BOT_DEFAULTS.get(k, ""))
     bot_guardar(c)
     return jsonify({"ok": True})
+
+
+def _agenda_limpiar(entradas):
+    if not isinstance(entradas, list) or len(entradas) > 120:
+        raise ValueError("máximo 120 actividades")
+    out, ids = [], set()
+    for i, e in enumerate(entradas, 1):
+        if not isinstance(e, dict):
+            raise ValueError("formato inválido")
+        aid = str(e.get("id") or "")
+        if not RE_ACT_ID.match(aid):
+            aid = os.urandom(4).hex()
+        if aid in ids:
+            raise ValueError("id repetido")
+        ids.add(aid)
+        nombre = re.sub(r"[\x00-\x1f<>&\"'|]", "", str(e.get("nombre") or "")).strip()[:40]
+        if not nombre:
+            raise ValueError("actividad %d: falta el nombre" % i)
+        pal = e.get("palabras", [])
+        if isinstance(pal, str):
+            pal = pal.splitlines()
+        limp = []
+        for p_ in pal:
+            p_ = str(p_).strip()
+            if not p_:
+                continue
+            if len(p_) > 60 or not _norm(p_):
+                raise ValueError("«%s»: palabra inválida: %s" % (nombre, p_[:30]))
+            if p_ not in limp:
+                limp.append(p_)
+        if not limp or len(limp) > 20:
+            raise ValueError("«%s»: debe tener entre 1 y 20 palabras clave" % nombre)
+        ini, fin = str(e.get("inicio") or ""), str(e.get("fin") or "")
+        if not (RE_FECHA.match(ini) and RE_FECHA.match(fin)):
+            raise ValueError("«%s»: fechas inválidas" % nombre)
+        if fin <= ini:
+            raise ValueError("«%s»: el fin debe ser posterior al inicio" % nombre)
+        img = str(e.get("img") or "")
+        if img and not (RE_IMG.match(img) and os.path.isfile(os.path.join(BOT_IMG, img))):
+            img = ""
+        out.append({"id": aid, "nombre": nombre, "palabras": limp, "inicio": ini, "fin": fin, "img": img,
+                    "q_freq": _qtxt(e, "q_freq", 12), "q_band": _qtxt(e, "q_band", 8), "q_mode": _qtxt(e, "q_mode", 10),
+                    "q_rst_s": _qtxt(e, "q_rst_s", 6), "q_rst_r": _qtxt(e, "q_rst_r", 6),
+                    "q_comments": _qtxt(e, "q_comments", 120)})
+    out.sort(key=lambda a: a["inicio"])
+    for a, b in zip(out, out[1:]):
+        if b["inicio"] < a["fin"]:
+            raise ValueError("se solapan «%s» y «%s»" % (a["nombre"], b["nombre"]))
+    return out
+
+
+@app.route("/api/aprs/bot/agenda", methods=["GET"])
+def api_agenda_get():
+    ag = agenda_leer()
+    c = bot_cfg()
+    con = db()
+    try:
+        cont = {r[0]: r[1] for r in con.execute("SELECT concurso, COUNT(*) FROM bot_part GROUP BY concurso")}
+    finally:
+        con.close()
+    for a in ag:
+        a["participantes"] = cont.get("act:" + a["id"], 0)
+    return jsonify({"actividades": ag, "vigente": c.get("_act") if ag and not c.get("_hueco") else None})
+
+
+@app.route("/api/aprs/bot/agenda", methods=["POST"])
+def api_agenda_post():
+    b = request.get_json(silent=True) or {}
+    try:
+        lst = _agenda_limpiar(b.get("actividades", []))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    agenda_escribir(lst)
+    usadas = {a["img"] for a in lst if a["img"]}
+    try:
+        for n in os.listdir(BOT_IMG):
+            p = os.path.join(BOT_IMG, n)
+            if n not in usadas and time.time() - os.path.getmtime(p) > 900:
+                os.remove(p)
+    except OSError:
+        pass
+    return jsonify({"ok": True, "total": len(lst)})
+
+
+@app.route("/api/aprs/bot/agenda/img", methods=["POST"])
+def api_agenda_img():
+    datos = request.get_data()
+    if not datos or len(datos) > 12 * 1024 * 1024:
+        return jsonify({"error": "imagen vacía o mayor a 12 MB"}), 400
+    try:
+        import io
+        from PIL import Image
+    except ImportError:
+        return jsonify({"error": "falta Pillow: sudo apt install -y python3-pil"}), 500
+    try:
+        im = Image.open(io.BytesIO(datos))
+        im.load()
+        im = im.convert("RGB")
+    except Exception:
+        return jsonify({"error": "el archivo no es una imagen válida"}), 400
+    w, h = im.size
+    if w * 9 > h * 16:
+        nw = int(h * 16 / 9)
+        x = (w - nw) // 2
+        im = im.crop((x, 0, x + nw, h))
+    else:
+        nh = int(w * 9 / 16)
+        y = (h - nh) // 2
+        im = im.crop((0, y, w, y + nh))
+    im = im.resize((1920, 1080), Image.LANCZOS)
+    os.makedirs(BOT_IMG, exist_ok=True)
+    name = "i%s.jpg" % os.urandom(5).hex()
+    im.save(os.path.join(BOT_IMG, name), "JPEG", quality=90)
+    return jsonify({"ok": True, "img": name})
+
+
+@app.route("/api/aprs/bot/img/<name>")
+def api_agenda_img_get(name):
+    if not RE_IMG.match(name):
+        return jsonify({"error": "no existe"}), 404
+    from flask import send_from_directory
+    return send_from_directory(BOT_IMG, name, max_age=3600)
 
 
 @app.route("/api/aprs/bot/reset", methods=["POST"])

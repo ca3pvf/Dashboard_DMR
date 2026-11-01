@@ -51,6 +51,7 @@ def bajar_tle():
     if len(parsear(texto)) < 10:
         raise ValueError("TLE incompleto")
     os.makedirs(os.path.dirname(TLE_PATH), exist_ok=True)
+    os.makedirs(os.path.dirname(TLE_PATH), exist_ok=True)
     open(TLE_PATH + ".tmp", "w").write(texto)
     os.replace(TLE_PATH + ".tmp", TLE_PATH)
 
@@ -65,7 +66,7 @@ def resolver(tokens, cat):
             ok.append(int(t))
             continue
         b = t.upper()
-        m = [n for n, v in cat.items() if v[0].upper().startswith(b)] or [n for n, v in cat.items() if b in v[0].upper()]
+        m = [n for n, v in cat.items() if v[0].upper() == b] or [n for n, v in cat.items() if v[0].upper().startswith(b)] or [n for n, v in cat.items() if b in v[0].upper()]
         (ok if m else falta).append(min(m) if m else t)
     return list(dict.fromkeys(ok)), falta
 
@@ -310,6 +311,38 @@ fetch('track' + location.search).then(r => r.json().then(d => { if(!r.ok) throw 
 def api_ruta():
     return _Resp(PAGINA_RUTA, mimetype="text/html")
 # SATRUTA-FIN
+
+
+# SATLISTA-INICIO
+@app.route("/api/sat/lista")
+def api_lista():
+    try:
+        cat = parsear(open(TLE_PATH).read())
+    except Exception as e:
+        return jsonify({"sats": [], "error": "sin TLE: %s" % e}), 503
+    sats = sorted([[n, v[0]] for n, v in cat.items()], key=lambda x: x[1].upper())
+    return jsonify({"sats": sats})
+
+
+@app.route("/api/sat/forzar", methods=["POST", "GET"])
+def api_forzar():
+    try:
+        bajar_tle()
+    except Exception as e:
+        ST["error"] = "TLE: %s" % e
+        return jsonify({"ok": False, "error": "no se pudo descargar el TLE (%s). Se sigue usando el anterior, si existe." % e}), 502
+    try:
+        recalcular()
+    except Exception as e:
+        ST["error"] = "calculo: %s" % e
+        return jsonify({"ok": False, "error": "TLE descargado, pero no se pudo recalcular: %s" % e}), 500
+    try:
+        n_tle = len(parsear(open(TLE_PATH).read()))
+    except Exception:
+        n_tle = 0
+    with LOCK:
+        return jsonify({"ok": True, "pasadas": len(ST["pasadas"]), "tle_sats": n_tle})
+# SATLISTA-FIN
 
 
 if __name__ == "__main__":

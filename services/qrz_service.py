@@ -183,6 +183,12 @@ def manuales_indice():
 def manuales(p):
     import os
     from flask import send_from_directory
+    import sys
+    for d in (os.path.join(BASE, "manuales"),
+              os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "manuales"),
+              os.path.join(getattr(sys, "_MEIPASS", "") or "", "manuales")):
+        if os.path.isfile(os.path.join(d, "index.html")):
+            return send_from_directory(d, p)
     return send_from_directory(os.path.join(BASE, "manuales"), p)
 
 

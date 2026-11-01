@@ -1,0 +1,182 @@
+<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Manuales · pcbox dashboard</title>
+<style>
+:root{--bg:#0d1117;--pn:#161b22;--bd:#2a3340;--tx:#d7dde5;--mt:#8b97a6;--ac:#39ff14;--am:#ffb300}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.55 system-ui,sans-serif;display:flex;min-height:100vh}
+nav{width:250px;background:var(--pn);border-right:1px solid var(--bd);padding:16px 10px;position:sticky;top:0;height:100vh;overflow:auto;flex:none}
+nav h1{font-size:15px;margin:0 6px 10px;color:var(--ac)}nav h4{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mt);margin:14px 6px 4px}
+nav a{display:block;padding:6px 10px;border-radius:6px;color:var(--tx);text-decoration:none;font-size:14px}nav a:hover{background:#1f2630}nav a.on{background:#1f2630;color:var(--ac);font-weight:600}
+main{flex:1;max-width:820px;padding:24px 32px}section{display:none}section.on{display:block}
+h2{margin:0 0 4px;font-size:22px}p.sub{margin:0 0 16px;color:var(--mt)}h3{font-size:15px;margin:18px 0 6px;color:var(--am)}
+code{background:#1f2630;padding:1px 6px;border-radius:4px;font-size:13px}ol,ul{padding-left:22px}li{margin:3px 0}
+table{border-collapse:collapse;width:100%;font-size:14px;margin:6px 0}td,th{border:1px solid var(--bd);padding:6px 8px;text-align:left;vertical-align:top}th{background:var(--pn)}
+.nota{border-left:3px solid var(--am);background:var(--pn);padding:8px 12px;margin:12px 0;border-radius:0 6px 6px 0}
+button{background:var(--pn);color:var(--tx);border:1px solid var(--bd);border-radius:6px;padding:6px 12px;cursor:pointer;margin-bottom:14px}
+@media print{body{display:block;background:#fff;color:#000}nav,button{display:none}main{max-width:none;padding:0}h3{color:#000}code{background:#eee}th{background:#eee}.nota{background:#f4f4f4;border-color:#999}td,th{border-color:#999}}
+</style></head><body>
+<nav><h1>Manuales pcbox</h1>
+<h4>Concursos y QSL</h4><a href="#bot">Bot de concurso</a><a href="#qrz">QRZ.com</a><a href="#gmail">Correo (Gmail)</a><a href="#qsl">Generador QSL y cola</a><a href="#contactos">Libreta de contactos</a>
+<h4>Tarjetas</h4><a href="#salud">Salud del sistema</a><a href="#satelites">Satélites</a><a href="#sismos">Sismos</a><a href="#grabaciones">Grabaciones de QSO</a><a href="#ranking">Ranking</a><a href="#guardia">Libro de guardia</a>
+<h4>Configuración</h4><a href="#lastheard">Last Heard y RadioID</a><a href="#aprs">APRS</a><a href="#sistema">Sistema</a><a href="#hotspot">Hotspot</a><a href="#brandmeister">BrandMeister</a><a href="#protocolos">Protocolos</a><a href="#tarjetas">Tarjetas y disposición</a><a href="#pantalla">Pantalla Hotspot (skins)</a><a href="#apariencia">Apariencia</a></nav>
+<main><button onclick="window.print()">Imprimir / guardar como PDF</button>
+
+<section id="bot"><h2>Bot de concurso por APRS</h2><p class="sub">Registra a quien te escriba una palabra clave por APRS, le responde y le envía su QSL por correo. Puede ser un concurso único o una agenda de actividades programadas.</p>
+<h3>Dónde está</h3><p>Botón <b>BOT</b> del menú lateral. Tiene dos pestañas: <b>Concurso único</b> y <b>Concursos agendados</b>. (Antes estaba en Configuración → Bot concurso; esa pestaña quedó oculta y sus enlaces abren la vista BOT.)</p>
+<h3>Antes de empezar</h3><ol><li>APRS conectado (tarjeta APRS activa).</li><li>QRZ.com configurado (ver manual QRZ.com).</li><li>Gmail configurado (ver manual Correo).</li><li>Diseño de la QSL listo en Generador QSL: el envío automático usa ese diseño (colores y posición del cuadro).</li></ol>
+<h3>Campos comunes a ambas pestañas</h3>
+<table><tr><th>Campo</th><th>Qué hace</th></tr>
+<tr><td>Activado</td><td>Enciende o apaga el bot.</td></tr>
+<tr><td>Respuestas</td><td>Texto devuelto por APRS al registrarse y al repetirse. Puedes usar <code>{call}</code> y <code>{op}</code>. El mensaje de &quot;fuera de fecha&quot; admite <code>{inicio}</code> y <code>{fin}</code>.</td></tr>
+<tr><td>Máximo por día</td><td>Tope de participantes nuevos por día (400 por defecto).</td></tr>
+<tr><td>Envío automático</td><td>Activado: genera y envía la QSL por Gmail sin intervención. Desactivado: solo deja al colega en la cola QSL.</td></tr>
+<tr><td>Guardar bot</td><td>Guarda estos campos. La lista de participantes aparece abajo.</td></tr></table>
+<h3>Pestaña Concurso único</h3>
+<table><tr><th>Campo</th><th>Qué hace</th></tr>
+<tr><td>Nombre</td><td>Identifica el concurso. Cambiar el nombre o la hora de inicio crea un concurso nuevo y los participantes se cuentan de nuevo.</td></tr>
+<tr><td>Palabras clave</td><td>Una o varias. El mensaje debe contener la palabra completa.</td></tr>
+<tr><td>Inicio y fin</td><td>Ventana de tiempo. Fuera de ella el bot responde &quot;fuera de fecha&quot;.</td></tr>
+<tr><td>Datos del QSO</td><td>Frecuencia, banda, modo, RST enviado y recibido, y comentario que irán en la QSL.</td></tr></table>
+<h3>Pestaña Concursos agendados</h3>
+<p>Programas todas las actividades por adelantado (una semana, uno o dos meses). El bot usa solo la <b>vigente</b> según la fecha y hora de pcbox; al terminar una, la siguiente se activa sola. Si el fin de una es igual al inicio de la siguiente, el cambio es inmediato.</p>
+<table><tr><th>Campo de la actividad</th><th>Qué hace</th></tr>
+<tr><td>Nombre</td><td>Hasta 40 caracteres.</td></tr>
+<tr><td>Inicio y Fin</td><td>Fecha y hora. El fin debe ser posterior al inicio.</td></tr>
+<tr><td>Palabras o frases válidas</td><td>Una por línea, de 1 a 20. Cada actividad tiene las suyas.</td></tr>
+<tr><td>Frecuencia, Banda, Modo, Comentario</td><td>Datos que irán en la QSL de esa actividad.</td></tr>
+<tr><td>Imagen de la QSL</td><td>PNG, JPG o WEBP de hasta 12 MB. Se recorta al centro en proporción 16:9 y se reduce a 1920x1080. Sin imagen, se usa el fondo del Generador QSL.</td></tr></table>
+<h3>Cómo programar actividades</h3>
+<ol><li>Completa el formulario y pulsa <b>Agregar actividad</b>. Con <b>Editar</b> la cargas de nuevo y con <b>Quitar</b> la eliminas de la lista.</li><li>Repite para cada actividad. La tabla muestra el nombre, las fechas, las palabras, la imagen y cuántos participantes tiene cada una. El punto ● marca la vigente.</li><li>Pulsa <b>Guardar agenda</b>. Mientras no guardes, aparece &quot;CAMBIOS SIN GUARDAR&quot;; <b>Descartar cambios</b> vuelve a lo último guardado.</li></ol>
+<h3>Crear una serie</h3>
+<p>Llena el formulario con la primera actividad, indica &quot;repetir cada N días&quot; (1 a 60) y la cantidad (1 a 60) y pulsa <b>Generar serie con el formulario</b>. Las actividades se crean con las mismas horas desplazadas N días; revisa y pulsa Guardar agenda.</p>
+<p>Ejemplo: nombre <code>Día {n}</code>, palabra <code>DIA{n}</code>, cada 1 días, cantidad 7 crea Día 1 a Día 7 con las palabras DIA1 a DIA7. <code>{n}</code> se reemplaza por el número; si el nombre no lo lleva, el número se agrega al final.</p>
+<h3>Reglas de la agenda</h3><ul><li>No se permiten actividades solapadas: al guardar, el bot indica cuáles.</li><li>Máximo 120 actividades.</li><li>Entre dos actividades con hueco, el bot responde &quot;fuera de fecha&quot; mostrando las fechas de la próxima.</li><li>Los participantes se cuentan por actividad: un colega puede participar en cada una. Los del concurso único anterior no se trasladan a las actividades.</li><li>Si quitas todas las actividades y guardas, el bot vuelve al modo Concurso único.</li></ul>
+<h3>Cómo funciona</h3><ol><li>Un colega envía por APRS a tu indicativo (por ejemplo INDICATIVO-10) un mensaje con una palabra clave, dentro de la ventana de la actividad vigente.</li><li>El bot lo registra una sola vez por concurso o actividad y le responde.</li><li>Lo agrega a la cola QSL y busca su correo en QRZ.com.</li><li>Con correo y envío automático activado, genera la QSL (con la imagen de esa actividad) y la envía por Gmail.</li><li>Sin correo, reintenta la búsqueda a los 2, 10 y 30 minutos.</li></ol>
+<h3>Estados que verás</h3>
+<table><tr><th>Estado</th><th>Significado y qué hacer</th></tr>
+<tr><td>en cola</td><td>Tiene correo pero el envío automático está apagado. Envía desde la cola QSL.</td></tr>
+<tr><td>en cola (sin correo; reintento n/3)</td><td>QRZ no entregó el correo. El bot reintenta solo.</td></tr>
+<tr><td>en cola (sin correo en QRZ)</td><td>Se agotaron los reintentos. Escribe el correo a mano con el lápiz de la cola QSL y envía.</td></tr>
+<tr><td>enviando...</td><td>Enviando por Gmail.</td></tr>
+<tr><td>enviada</td><td>Listo.</td></tr>
+<tr><td>error: ...</td><td>Falla de envío. Revisa el manual Correo (Gmail).</td></tr></table>
+<h3>Reglas útiles</h3><ul><li>Los mensajes de tu propio indicativo con el SSID del dashboard (INDICATIVO-10) se ignoran. Con otro SSID, como tu APRSpot (INDICATIVO-7), sí cuentan: sirve para probar.</li><li>El indicativo del colega se toma sin SSID.</li><li>Quien repite dentro de la hora no recibe respuesta; pasada la hora recibe el aviso de &quot;ya registrado&quot;. Máximo 60 respuestas por hora.</li></ul>
+<h3>Cómo probar</h3><ol><li>En Concursos agendados crea una actividad de prueba que haya empezado hace unos minutos y termine en una hora, con la palabra <code>prueba</code>, y pulsa Guardar agenda. (En Concurso único, cambia la hora de inicio para crear un concurso nuevo.)</li><li>Desde tu APRSpot envía <code>prueba</code> a INDICATIVO-10.</li><li>Mira el estado del participante y revisa tu correo.</li><li>Al terminar, quita la actividad de prueba y guarda la agenda.</li></ol></section>
+
+<section id="qrz"><h2>QRZ.com</h2><p class="sub">Consulta nombre, país y correo de cada colega.</p>
+<h3>Configurar</h3><ol><li>Configuración → QRZ.com.</li><li>Ingresa tu usuario y contraseña de QRZ.com. La cuenta debe tener suscripción con acceso XML.</li><li>Guarda.</li></ol>
+<p>Las credenciales quedan solo en pcbox, en un archivo con permisos restringidos, y no vuelven al navegador. La contraseña viaja sin cifrar dentro de tu red local.</p>
+<h3>Qué hay que saber</h3><ul><li>Se busca por el indicativo base: sin SSID ni sufijos como /P.</li><li>QRZ entrega el correo solo si el operador lo tiene cargado y permite mostrarlo. Si no lo entrega, el colega queda "sin correo".</li><li>Las respuestas se guardan en caché: con correo por largo tiempo; sin correo, solo 10 minutos y luego se vuelve a consultar.</li><li>En la cola QSL, el botón "Buscar correos en QRZ" consulta a todos los de la cola.</li></ul>
+<div class="nota">Si tu propio correo sale vacío: revisa en tu perfil de QRZ.com que el correo esté cargado y visible, y que tu suscripción XML esté vigente.</div></section>
+
+<section id="gmail"><h2>Correo (Gmail)</h2><p class="sub">Cuenta desde la que se envían las QSL.</p>
+<h3>Crear la contraseña de aplicación</h3><ol><li>En tu cuenta Google, activa la verificación en 2 pasos.</li><li>Ve a Seguridad → Contraseñas de aplicaciones.</li><li>Crea una con el nombre "pcbox" y copia las 16 letras.</li></ol>
+<h3>Configurar en el dashboard</h3><ol><li>Configuración → Correo (Gmail).</li><li>Cuenta Gmail, contraseña de aplicación (no es tu clave de Gmail), nombre del remitente, asunto y texto del cuerpo.</li><li>Guarda y prueba enviando una QSL a tu propio correo desde la cola QSL.</li></ol>
+<ul><li>Gmail limita el envío diario (unos 500 correos en cuentas personales).</li><li>Si hay error de envío, revisa que la contraseña de aplicación esté bien copiada y que la verificación en 2 pasos siga activa.</li></ul></section>
+
+<section id="qsl"><h2>Generador QSL y cola</h2><p class="sub">Una QSL por colega, con tu diseño.</p>
+<h3>Cola QSL</h3><ol><li>En Last Heard marca las casillas de los colegas y pulsa "Agregar a cola QSL".</li><li>"Ver cola" muestra los pendientes, con columna de correo (el lápiz permite escribirlo a mano).</li><li>"Buscar correos en QRZ" completa los que falten.</li><li>"Generar QSL (ZIP)" crea una QSL por colega.</li><li>Puedes exportar la cola en ADIF (incluye el correo).</li></ol>
+<h3>Diseño</h3><p>El cuadro de datos (OPERADOR, QSO CON, fecha UTC, banda, modo, frecuencia, RST y comentario) se arrastra sobre la imagen. Colores y transparencia son editables. El bot usa el diseño guardado.</p></section>
+
+<section id="contactos"><h2>Libreta de contactos</h2><p class="sub">Los correos de tus colegas, listos para usar en Gmail u otro cliente.</p>
+<h3>Cómo se llena</h3><ul><li>Sola: cada 5 minutos copia los correos que ya están en la cola QSL (los que encuentra QRZ o escribes a mano) y completa nombre y país desde QRZ.</li><li>A mano: Configuración → Contactos. Escribe indicativo, nombre, correo y país y pulsa Guardar. El lápiz carga un contacto para editarlo y la ✕ lo borra (un contacto borrado no vuelve a aparecer al sincronizar).</li><li>El botón "Sincronizar desde cola QSL" fuerza la copia en el momento.</li></ul>
+<h3>Exportar</h3><table><tr><th>Botón</th><th>Para qué sirve</th></tr><tr><td>Google Contacts (CSV)</td><td>Gmail: entra a contacts.google.com → Importar → elige el archivo. Los contactos quedan con la etiqueta "Radioaficionados" y el indicativo entre paréntesis en el nombre.</td></tr><tr><td>Outlook (CSV)</td><td>Outlook: Archivo → Abrir y exportar → Importar o exportar → Importar de otro programa o archivo → Valores separados por comas.</td></tr><tr><td>vCard (.vcf)</td><td>Formato universal: Apple Contactos, Thunderbird, Android y la mayoría de los clientes de correo.</td></tr></table>
+<div class="nota">Solo se exportan los contactos que tienen correo. Si importas de nuevo en Gmail, Google puede ofrecerte combinar duplicados.</div></section>
+
+<section id="lastheard"><h2>Last Heard y RadioID</h2><p class="sub">Últimos escuchados y ficha del indicativo.</p>
+<ul><li>Intervalos (Configuración → Last Heard): Last Heard 2 s y QSO activos 1 s por defecto. Mínimo 1 s.</li><li>Cantidad de filas: campo "Mostrar últimos", de 5 a 50.</li><li>Filtro de duración mínima en la tarjeta: oculta los PTT más cortos que X segundos.</li><li>RadioID: haz clic en un indicativo para ver su ficha; también sigue al QSO activo. En Configuración puedes fijar los segundos antes de ocultar (0 = no ocultar).</li><li>La lista combina lo que escucha el hotspot con tu historial propio, así que no se pierde al reiniciar el hotspot.</li></ul></section>
+
+<section id="aprs"><h2>APRS</h2><p class="sub">Baliza, monitor y mensajes.</p>
+<ul><li>Configuración → APRS: indicativo (sin SSID), SSID (0 a 15; el dashboard usa 10), passcode, servidor, puerto, latitud y longitud.</li><li>Tu APRSpot usa otro SSID (por ejemplo -7), por eso los mensajes entre ambos funcionan.</li><li>En la tarjeta APRS puedes enviar y recibir mensajes, borrarlos y ordenar la lista por Indicativo, Distancia o Desde con un clic (otro clic invierte el orden).</li><li>El radio de cobertura en km se edita en la tarjeta.</li><li>Las URL dentro de los mensajes son clicables y abren en una pestaña nueva.</li></ul></section>
+
+<section id="sistema"><h2>Sistema</h2><p class="sub">Estado de pcbox.</p>
+<ul><li>Configuración → Sistema: intervalo de actualización de la tarjeta (10 s por defecto, mínimo 1 s).</li><li>Los cambios se guardan en pcbox y se ven igual en todos tus equipos.</li></ul></section>
+
+<section id="hotspot"><h2>Hotspot</h2><p class="sub">Uno o varios hotspots.</p>
+<ul><li>Configuración → Hotspot: intervalos de la tarjeta Hotspot y de Pantalla Hotspot (10 s por defecto).</li><li>Se pueden registrar hasta 5 hotspots. La franja superior muestra un botón por cada uno: verde conectado, rojo sin conexión. Al elegir uno, las tarjetas muestran ese hotspot.</li><li>Las contraseñas de los hotspots no se sincronizan: quedan solo en el equipo donde las escribes.</li><li>Protocolos, BrandMeister y QSO activos siguen ligados al hotspot 1.</li></ul></section>
+
+<section id="brandmeister"><h2>BrandMeister</h2><p class="sub">Talkgroups a seguir y su actividad.</p>
+<p>La tarjeta tiene dos listas distintas, cada una con su botón de edición:</p>
+<table><tr><th>Lista</th><th>Para qué sirve</th><th>Cómo se edita</th></tr>
+<tr><td>TGs seguidos (tabla superior)</td><td>Muestra TG, protocolo, nombre del TG y el último indicativo que habló. Hasta 10 TGs.</td><td>Botón <b>⚙ TGs</b> junto al título: escribe los TGs separados por coma (ejemplo: 730,730911,8730444) y pulsa Guardar. Es la misma lista de Configuración → BrandMeister; se actualizan juntas.</td></tr>
+<tr><td>Actividad reciente (abajo)</td><td>Lista las últimas transmisiones de los TGs que quieras vigilar. Hasta 5 TGs.</td><td>Botón <b>⚙ Vigilar</b>. Un TG recién agregado aparece en la lista cuando alguien transmita en él.</td></tr></table>
+<ul><li>El intervalo de actualización está en Configuración → BrandMeister (5 s por defecto).</li><li>Los TGs seguidos y la actividad reciente son independientes: cambiar una lista no modifica la otra.</li></ul></section>
+
+<section id="protocolos"><h2>Protocolos</h2><p class="sub">Estado de cada red y modo.</p>
+<table><tr><th>Color</th><th>Significado</th></tr><tr><td>Verde</td><td>Conectado y activo</td></tr><tr><td>Amarillo</td><td>Con problemas u oscilando</td></tr><tr><td>Rojo</td><td>Caído</td></tr><tr><td>Blanco</td><td>No configurado o deshabilitado en el hotspot</td></tr></table>
+<p>El intervalo (10 s por defecto) se cambia en Configuración → Protocolos. También se muestran los modos cruzados (YSF2DMR, DMR2YSF, etc.).</p></section>
+
+<section id="tarjetas"><h2>Tarjetas y menú</h2><p class="sub">Cada tarjeta se mueve y se ajusta como una ventana, y el menú lateral se puede reordenar.</p>
+<h3>Tarjetas</h3>
+<ul><li>Mover: toma la tarjeta por su barra superior y arrástrala.</li><li>Tamaño: toma cualquiera de las 4 esquinas y arrastra en cualquier dirección.</li><li>Maximizar: doble clic en la barra superior; la tecla Esc o otro doble clic la devuelve a su tamaño.</li><li>Minimizar: botón <b>−</b> de la cabecera deja solo la barra; <b>+</b> la restaura.</li><li>Cerrar: ✕ en la cabecera. Para reactivar, Configuración → Tarjetas (también hay &quot;Mostrar todas&quot;).</li><li>&quot;Restablecer&quot; (menú lateral, abajo) vuelve a la disposición original.</li><li>La disposición y las tarjetas visibles se guardan por equipo. Mover y ajustar solo funciona en pantallas anchas (900 px o más).</li></ul>
+<h3>Reordenar el menú lateral</h3>
+<ul><li>Con mouse: mantén pulsada una opción, muévela sobre otra y suéltala.</li><li>En pantalla táctil: mantén pulsada la opción unos 0,5 s hasta sentir una vibración corta y luego arrastra. Si deslizas el dedo antes, la página se desplaza normal.</li><li>Funciona con el menú vertical u horizontal. El orden se guarda en ese equipo.</li><li>Para volver al orden original: Configuración → Tarjetas → <b>Restablecer orden del menú</b>.</li><li>El botón <b>BOT</b> es una opción más del menú y se puede mover igual que las demás.</li></ul></section>
+
+<section id="pantalla"><h2>Pantalla Hotspot (skins)</h2><p class="sub">Aspecto de la tarjeta estilo Nextion.</p>
+<ul><li>Configuración → Pantalla: elige entre el diseño original (HS3AWO) y cinco skins (G4KLX clásico, ON7LDS con IP, WA6HXG azul, WA6HXG verde, EA5SW banderas). Verás una vista previa en reposo y con un QSO de demostración.</li><li>El skin elegido se guarda en pcbox y se ve igual en todos tus equipos.</li><li>El skin se escala completo al tamaño de la tarjeta, con 5 px de margen arriba y abajo, y los textos largos reducen su fuente para caber en una línea.</li><li>En reposo muestra reloj y datos del equipo; con QSO activo, indicativo, TG, protocolo y segundos.</li></ul></section>
+<section id="salud"><h2>Salud del sistema</h2><p class="sub">Un vistazo a si todo lo de pcbox y el hotspot funciona.</p>
+<p>La tarjeta resume cuántas comprobaciones están con fallas (rojo), con avisos (amarillo) y correctas (verde), y lista primero lo que requiere atención. Se actualiza sola.</p>
+<h3>Qué revisa</h3>
+<table><tr><th>Comprobación</th><th>Detalle</th></tr>
+<tr><td>Servicios</td><td>Last Heard, Almacén, Protocolos, Sistema, Hotspot WPSD, BrandMeister, RadioID, APRS, Pantalla Hotspot, QRZ, Correo, Contactos, Satélites, Grabaciones, Sismos, web del dashboard y Homepage. Solo los servicios habilitados.</td></tr>
+<tr><td>Hotspot en la red</td><td>Si responde en su puerto web.</td></tr>
+<tr><td>API web del hotspot</td><td>Aviso si tarda 8 s o más en dos mediciones seguidas.</td></tr>
+<tr><td>RAM y disco de pcbox</td><td>Aviso con menos de 300 MB de RAM disponibles; error con menos de 150 MB. Disco: aviso desde 90 % y error desde 95 %.</td></tr>
+<tr><td>QSO en el historial</td><td>Compara las transmisiones del log del hotspot de las últimas 24 h con tu historial. Aviso si faltan 3 o más.</td></tr>
+<tr><td>Grabador de QSO (hotspot)</td><td>Si el servicio dmr-rec del hotspot está activo.</td></tr></table>
+<h3>Eventos recientes</h3><p>Anota cada cambio de estado (caída, aviso, recuperación). Se conservan 30 días, hasta 500 eventos.</p>
+<h3>Botón Opciones</h3>
+<p>Los botones se muestran al pulsar <b>Opciones</b> (arriba a la derecha de la tarjeta) y se ocultan al pulsarlo de nuevo.</p>
+<table><tr><th>Botón</th><th>Qué hace</th></tr>
+<tr><td>Ver los N correctos</td><td>Despliega la lista de comprobaciones correctas.</td></tr>
+<tr><td>Borrar historial</td><td>Borra la lista de eventos recientes.</td></tr>
+<tr><td>Recuperar QSO faltantes</td><td>Aparece solo cuando hay aviso de QSO faltantes. Lee el log del hotspot, completa en el historial las transmisiones que faltaban (nombre y país se toman del historial si el indicativo ya existía) y vuelve a comprobar. Antes guarda una copia de la base en la carpeta BAK. Solo recupera lo que el log del hotspot aún conserva (unas 24 h).</td></tr></table></section>
+
+<section id="satelites"><h2>Satélites</h2><p class="sub">Próximas pasadas de satélites de radioaficionados sobre tu ubicación.</p>
+<ul><li>La ubicación sale de la configuración APRS (latitud y longitud). Los datos orbitales (TLE) vienen de CelesTrak y se renuevan solos; las pasadas se calculan para las próximas 48 h con una precisión de unos 15 s.</li><li>Clic en una pasada abre en otra pestaña la ruta del satélite durante ese paso.</li></ul>
+<h3>Configuración (⚙ en la tarjeta)</h3>
+<table><tr><th>Campo</th><th>Qué hace</th></tr>
+<tr><td>Satélites</td><td>Nombres o números NORAD separados por coma. Al escribir sugiere nombres de la lista; no acepta nombres que no estén en ella. Máximo 12.</td></tr>
+<tr><td>Elevación mínima (°)</td><td>Solo muestra pasadas que lleguen al menos a esa altura (15° por defecto).</td></tr>
+<tr><td>Aviso (min antes)</td><td>Cuántos minutos antes de la pasada aparece el aviso (10 por defecto).</td></tr>
+<tr><td>↻ Forzar carga</td><td>Descarga los TLE y recalcula las pasadas ahora, sin esperar el ciclo automático.</td></tr></table>
+<h3>Aviso de pasada</h3><p>Aparece un hexágono rojo parpadeante en el centro de la pantalla antes de la pasada; durante el paso se muestra en verde. Se cierra con la ✕.</p></section>
+
+<section id="sismos"><h2>Sismos</h2><p class="sub">Sismos recientes de Chile y del mundo, con la distancia a tu ubicación.</p>
+<ul><li>Pestañas: <b>CSN</b> (Centro Sismológico Nacional, sismologia.cl), <b>USGS Chile</b> (magnitud 3 o más, últimos 2 días) y <b>USGS Mundo</b> (magnitud 4,5 o más del último día). Se actualizan cada 2,5 minutos; el botón ⟳ consulta de inmediato.</li><li>La distancia se calcula desde la latitud y longitud de la configuración APRS.</li></ul>
+<h3>Configuración (⚙ en la tarjeta)</h3>
+<table><tr><th>Campo</th><th>Qué hace</th></tr>
+<tr><td>Distancia (km a la redonda)</td><td>Radio dentro del cual un sismo genera aviso.</td></tr>
+<tr><td>Mostrar aviso (segundos)</td><td>Cuánto tiempo permanece el aviso en pantalla.</td></tr>
+<tr><td>Magnitud mínima</td><td>Sismos menores a este valor no generan aviso.</td></tr>
+<tr><td>Guardar / Probar</td><td>Guarda los valores; Probar muestra un aviso de ejemplo.</td></tr></table></section>
+
+<section id="grabaciones"><h2>Grabaciones de QSO</h2><p class="sub">Escucha, descarga y envía las transmisiones grabadas por el hotspot.</p>
+<h3>Cómo funciona</h3><ul><li>El hotspot guarda cada transmisión (servicio dmr-rec). pcbox copia las nuevas cada 2 minutos y las decodifica para poder escucharlas; el indicativo se obtiene desde el DMR ID con RadioID.</li><li><b>↻ Sincronizar</b> fuerza la copia en el momento.</li><li>Las grabaciones se borran solas a los 60 días, salvo las marcadas con ★.</li></ul>
+<h3>Filtros y orden</h3><ul><li><b>Solo ★</b> muestra los favoritos; <b>Limpiar filtros</b> los quita.</li><li>Desde y Hasta (fecha y hora), duración mínima y máxima en segundos.</li><li>Ordenar por Fecha, Indicativo, TG o Duración, descendente o ascendente. Se muestran hasta 200.</li><li>&quot;Pasar a la siguiente al terminar&quot; reproduce la lista seguida.</li></ul>
+<h3>Botones del reproductor</h3>
+<table><tr><th>Botón</th><th>Qué hace</th></tr>
+<tr><td>◀ Anterior / Siguiente ▶</td><td>Cambia de grabación.</td></tr>
+<tr><td>☆ Marcar</td><td>Marca o desmarca como favorita (no se borra sola).</td></tr>
+<tr><td>⬇ Convertir a MP3</td><td>Convierte y descarga el MP3 (requiere ffmpeg en pcbox).</td></tr>
+<tr><td>🗑 Borrar</td><td>Elimina la grabación; no vuelve a copiarse del hotspot.</td></tr>
+<tr><td>✉ Enviar MP3</td><td>Lo envía por correo con la cuenta Gmail configurada. Máximo 12 MB y sujeto al límite diario de envíos.</td></tr>
+<tr><td>💬 WhatsApp</td><td>Comparte la grabación por WhatsApp.</td></tr></table></section>
+
+<section id="ranking"><h2>Ranking de actividad</h2><p class="sub">Quién más transmite en tu hotspot.</p>
+<ul><li>Período: <b>Día</b>, <b>Semana</b>, <b>Mes</b> o <b>Año</b> (desde el inicio del período en la hora local).</li><li>Ordena por <b>Transmisiones</b> (cantidad de PTT) o <b>Tiempo hablado</b>.</li><li>Columnas: posición, indicativo, nombre, país, PTT y tiempo.</li><li>Se calcula con el historial propio guardado en pcbox, así que no se pierde al reiniciar el hotspot. Con varios hotspots, una misma transmisión escuchada por dos cuenta una sola vez.</li><li>El historial parte desde que se instaló el servicio Last Heard; el período Año solo cubre desde ese registro.</li></ul></section>
+
+<section id="guardia"><h2>Libro de guardia</h2><p class="sub">Registro de tus QSO de operación.</p>
+<ul><li>Selector <b>Usar el libro de guardia</b>: en esta tarjeta, en una pestaña nueva o en una ventana nueva.</li><li>Los QSO quedan en el registro del Generador QSL, así que puedes generar sus tarjetas desde allí (botón <b>Ir al Generador QSL</b>).</li></ul>
+<h3>Registrar un contacto</h3>
+<ol><li>Escribe el <b>indicativo</b>: la fecha y la hora de inicio (UTC) se completan solas; <b>Ahora</b> usa la hora actual.</li><li>Completa banda, frecuencia (MHz), modo, RST enviado y recibido, potencia (W), WhatsApp del colega (opcional) y comentarios (hasta 150 caracteres).</li><li>Si dejas vacía la hora final, se usa la hora UTC al pulsar <b>Registrar QSO</b>.</li></ol>
+<ul><li>Para corregir uno ya registrado, ábrelo desde la lista; <b>Cancelar edición</b> descarta los cambios y <b>Limpiar</b> vacía el formulario.</li><li>La lista se filtra por indicativo y banda, y puedes mostrar 10, 20, 50 o 100 filas.</li></ul></section>
+
+<section id="apariencia"><h2>Apariencia</h2><p class="sub">Colores y tipografía del dashboard. Los cambios se aplican al instante y se guardan en pcbox, así que se ven igual en todos tus equipos.</p>
+<ul><li><b>Modo:</b> Día, Noche o Sistema (sigue el del equipo).</li><li><b>Combinación de colores:</b> elige la paleta. La pantalla Nextion de la tarjeta Hotspot mantiene su propio estilo oscuro.</li><li><b>Tipografía:</b> fuente y tamaño de los títulos de las tarjetas, del indicativo (esquina superior izquierda) y de los botones, con vista previa. <b>Restablecer tipografía</b> vuelve a los valores originales.</li><li><b>Skin de la tarjeta Pantalla Hotspot:</b> elige el diseño y míralo en reposo y con un QSO de demostración (ver manual Pantalla Hotspot).</li></ul></section>
+</main>
+<script>
+var S=[].slice.call(document.querySelectorAll('section')),L=[].slice.call(document.querySelectorAll('nav a'));
+function ir(){var id=(location.hash||'#bot').slice(1);if(!document.getElementById(id))id='bot';
+S.forEach(function(s){s.classList.toggle('on',s.id===id)});L.forEach(function(a){a.classList.toggle('on',a.getAttribute('href')==='#'+id)});
+document.title='Manual · '+document.getElementById(id).querySelector('h2').textContent}
+window.addEventListener('hashchange',ir);ir();
+</script></body></html>

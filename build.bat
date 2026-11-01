@@ -7,7 +7,7 @@ python -m venv .venv-build || goto :error
 call .venv-build\Scripts\activate.bat
 pip install --quiet -r requirements-portable.txt pyinstaller || goto :error
 pyinstaller --onefile --clean --noconfirm --name pcbox-portable ^
-  --add-data "services;services" --add-data "dashboard.html;." --add-data "wizard.html;." %EXTRA% ^
+  --add-data "services;services" --add-data "dashboard.html;." --add-data "wizard.html;." --add-data "manuales;manuales" %EXTRA% ^
   --collect-submodules socketio --collect-submodules engineio --collect-all sgp4 ^
   --hidden-import PIL.Image --hidden-import PIL.ImageDraw --hidden-import PIL.ImageFont ^
   --hidden-import aprslib --hidden-import websocket --hidden-import werkzeug.serving ^
