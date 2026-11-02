@@ -475,6 +475,12 @@ def crear_app(cargados, cfg):
         return r
     app.add_url_rule("/", "portable.pagina", pagina)
     app.add_url_rule("/dashboard.html", "portable.pagina2", pagina)
+
+    def _manuales(p="index.html"):
+        from flask import send_from_directory
+        return send_from_directory(str(RES / "manuales"), p)
+    app.add_url_rule("/manuales/", "portable.manuales_i", _manuales)
+    app.add_url_rule("/manuales/<path:p>", "portable.manuales", _manuales)
     app.add_url_rule("/favicon.ico", "portable.favicon", lambda: ("", 204))
     app.add_url_rule("/api/portable/ready", "portable.ready", lambda: jsonify({"ok": True}))
     app.add_url_rule("/api/portable/ssh-test", "portable.ssh_test",
