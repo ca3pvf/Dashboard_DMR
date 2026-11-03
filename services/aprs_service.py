@@ -78,7 +78,7 @@ _sock = None
 CFG = dict(DEFAULTS)
 ESTACIONES = {}
 ST = {"conectado": False, "verificado": False, "error": None, "servidor": None,
-      "paquetes": 0, "ultimo_paquete": None, "ultima_baliza": 0.0, "desde": None}
+      "paquetes": 0, "ultimo_paquete": None, "ultima_baliza": 0.0, "desde": None, "nodo": None}
 
 
 # ---------------- configuracion ----------------
@@ -492,6 +492,7 @@ def bot_marcar(base, cid, estado):
     con = db()
     try:
         con.execute("UPDATE bot_part SET qsl=? WHERE concurso=? AND call=?", (estado[:100], cid, base))
+        _bot_evento(con, cid, base, "estado", estado)
         con.commit()
     finally:
         con.close()
@@ -741,9 +742,11 @@ def bot_procesar(src, texto, mid=None):
             if ya is None:
                 con.execute("INSERT INTO bot_part(concurso,call,peer,ts,texto,aviso) VALUES(?,?,?,?,?,?)",
                             (cid, base, src, ts, texto[:67], 0))
+                _bot_evento(con, cid, base, "participa", texto[:67])
                 plantilla = None      # la respuesta la decide bot_nuevo_participante (con o sin correo)
             elif ts - ya["aviso"] > 3600:
                 con.execute("UPDATE bot_part SET aviso=? WHERE concurso=? AND call=?", (ts, cid, base))
+                _bot_evento(con, cid, base, "repetido", texto[:67])
                 plantilla = c["resp_dup"]
             else:
                 plantilla = None
@@ -766,6 +769,9 @@ def procesar(linea):
     if linea.startswith("#"):
         if "logresp" in linea:
             ST["verificado"] = (" verified" in linea) and ("unverified" not in linea)
+            _m = re.search(r"server\s+([A-Za-z0-9_.\-]+)", linea)
+            if _m:
+                ST["nodo"] = _m.group(1)
         return
     ST["paquetes"] += 1
     ST["ultimo_paquete"] = time.time()
@@ -802,7 +808,7 @@ def conectar_loop():
             s.sendall(f"user {call} pass {pc} vers pcbox-dashboard {VERSION} filter {filtro}\r\n".encode())
             with _sock_lock:
                 _sock = s
-            ST.update(conectado=True, verificado=False, error=None, desde=time.time(),
+            ST.update(conectado=True, verificado=False, nodo=None, error=None, desde=time.time(),
                       servidor=f"{CFG['server']}:{CFG['port']}")
             espera = 5
             for raw in f:
@@ -815,7 +821,7 @@ def conectar_loop():
         finally:
             with _sock_lock:
                 _sock = None
-            ST.update(conectado=False, verificado=False)
+            ST.update(conectado=False, verificado=False, nodo=None)
             if s is not None:
                 try:
                     s.close()
@@ -875,7 +881,7 @@ def api_status():
         n_est = len(ESTACIONES)
     return jsonify({
         "indicativo": mi_call(), "conectado": ST["conectado"], "verificado": ST["verificado"],
-        "servidor": ST["servidor"], "error": ST["error"], "paquetes": ST["paquetes"],
+        "servidor": ST["servidor"], "nodo": ST.get("nodo"), "error": ST["error"], "paquetes": ST["paquetes"],
         "ultimo_paquete": ST["ultimo_paquete"], "estaciones": n_est, "radio_km": CFG["radius_km"],
         "sin_leer": sin_leer,
         "baliza": {"activa": bool(CFG.get("beacon_enabled")),
@@ -1141,15 +1147,16 @@ def bot_codigo(q):
     return "nuevo" if not q else "otro"
 
 
-def bot_sync_cola(cid, filas):
+def bot_sync_cola(cid, filas, estados=None):
     # si una QSL se envio a mano desde la cola, el estado del participante lo refleja
     pend = [r for r in filas if bot_codigo(r["qsl"]) in ("en_cola", "error", "enviando")]
     if not pend:
         return {}
-    try:
-        estados = {q.get("uid"): q.get("estado") for q in _http_json("http://127.0.0.1:5013/api/store/qslcola", timeout=3)}
-    except Exception:
-        return {}
+    if estados is None:
+        try:
+            estados = {q.get("uid"): q.get("estado") for q in _http_json("http://127.0.0.1:5013/api/store/qslcola", timeout=3)}
+        except Exception:
+            return {}
     cambios = {}
     for r in pend:
         if estados.get("aprs|%s|%s" % (r["call"], cid)) == "enviada":
@@ -1594,6 +1601,194 @@ def api_bot_reset():
     finally:
         con.close()
     return jsonify({"ok": True})
+
+
+# BOTSTATS-INICIO
+def _bot_tabla_log(con):
+    con.execute("CREATE TABLE IF NOT EXISTS bot_log (id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, "
+                "concurso TEXT NOT NULL, call TEXT NOT NULL, evento TEXT NOT NULL, detalle TEXT)")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_botlog_call ON bot_log(call)")
+
+
+def _bot_evento(con, cid, call, evento, detalle=""):
+    try:
+        _bot_tabla_log(con)
+        con.execute("INSERT INTO bot_log(ts,concurso,call,evento,detalle) VALUES(?,?,?,?,?)",
+                    (time.time(), cid, call, evento, str(detalle)[:100]))
+        con.execute("DELETE FROM bot_log WHERE id < (SELECT MAX(id) FROM bot_log) - 20000")
+    except Exception as e:
+        print("bot: no se pudo registrar el evento: %s" % e, flush=True)
+
+
+def _bot_columnas(ids):
+    ag = sorted(agenda_leer(), key=lambda a: a["inicio"])
+    if ag:
+        return [{"cid": "act:" + a["id"], "nombre": a["nombre"], "inicio": a["inicio"], "fin": a["fin"]}
+                for a in ag if not ids or a["id"] in ids]
+    con = db()
+    try:
+        filas = con.execute("SELECT concurso, MIN(ts) FROM bot_part GROUP BY concurso ORDER BY MIN(ts)").fetchall()
+    finally:
+        con.close()
+    out = []
+    for r in filas:
+        p = r[0].split("|")
+        out.append({"cid": r[0], "nombre": p[0] or r[0], "inicio": p[1] if len(p) > 1 else "", "fin": ""})
+    return out
+
+
+def _libreta_paises():
+    try:
+        return {x.get("call"): x.get("country") or "" for x in _http_json("http://127.0.0.1:5018/api/contactos", timeout=3)}
+    except Exception:
+        return {}
+
+
+@app.route("/api/aprs/bot/stats")
+def api_bot_stats():
+    ids = [i for i in request.args.get("ids", "").split(",") if i]
+    cols = _bot_columnas(ids)
+    cids = [c["cid"] for c in cols]
+    con = db()
+    try:
+        filas = [r for r in con.execute("SELECT concurso,call,ts,qsl FROM bot_part").fetchall() if r["concurso"] in cids]
+    finally:
+        con.close()
+    cambios = {}
+    estados_cola = None
+    if any(bot_codigo(r["qsl"]) in ("en_cola", "error", "enviando") for r in filas):
+        try:
+            estados_cola = {q.get("uid"): q.get("estado") for q in _http_json("http://127.0.0.1:5013/api/store/qslcola", timeout=3)}
+        except Exception:
+            estados_cola = {}
+    for cid in cids:
+        for call, q in bot_sync_cola(cid, [r for r in filas if r["concurso"] == cid], estados_cola).items():
+            cambios[(cid, call)] = q
+    paises = _libreta_paises()
+    ahora = datetime.now().strftime("%Y-%m-%dT%H:%M")
+    for c in cols:
+        c["terminada"] = bool(c["fin"]) and c["fin"] <= ahora
+    part, estados = {}, {}
+    for r in filas:
+        q = cambios.get((r["concurso"], r["call"]), r["qsl"])
+        cod = bot_codigo(q)
+        p = part.setdefault(r["call"], {"call": r["call"], "pais": paises.get(r["call"], ""), "celdas": {}})
+        p["celdas"][r["concurso"]] = {"ts": r["ts"], "qsl": q, "cod": cod}
+        estados[cod] = estados.get(cod, 0) + 1
+    lista = list(part.values())
+    for p in lista:
+        p["n"] = len(p["celdas"])
+        p["completo"] = bool(cols) and p["n"] == len(cols)
+    lista.sort(key=lambda p: (not p["completo"], -p["n"], p["call"]))
+    por_pais = {}
+    for p in lista:
+        k = p["pais"] or "Sin dato"
+        por_pais[k] = por_pais.get(k, 0) + 1
+    todas = _bot_columnas([]) if agenda_leer() else []
+    return jsonify({"columnas": cols, "todas": todas, "participantes": lista, "estados": estados, "paises": por_pais,
+                    "completos": sum(1 for p in lista if p["completo"]),
+                    "cerrada": bool(cols) and all(c["terminada"] for c in cols)})
+
+
+@app.route("/api/aprs/bot/registro")
+def api_bot_registro():
+    call = re.sub(r"[^A-Z0-9]", "", request.args.get("call", "").upper())
+    try:
+        limite = min(500, max(1, int(request.args.get("limit", "200"))))
+    except ValueError:
+        limite = 200
+    pat = "%" + call + "%"
+    con = db()
+    try:
+        _bot_tabla_log(con)
+        ev = con.execute("SELECT ts,concurso,call,evento,detalle FROM bot_log WHERE call LIKE ? ORDER BY id DESC LIMIT ?",
+                         (pat, limite)).fetchall()
+        ms = con.execute("SELECT ts,dir,peer,text,estado,origen FROM messages WHERE origen IN ('bot','concurso') "
+                         "AND peer LIKE ? ORDER BY id DESC LIMIT ?", (pat, limite)).fetchall()
+        con.commit()
+    finally:
+        con.close()
+    return jsonify({"eventos": [dict(r) for r in ev], "mensajes": [dict(r) for r in ms]})
+# BOTMAIL-INICIO
+RE_MAIL_PANEL = re.compile(r"^[^@\s,;]+@[^@\s,;]+\.[^@\s,;]+$")
+
+
+def _cfg_de(cid):
+    c = bot_cfg()
+    if str(cid).startswith("act:"):
+        a = next((x for x in agenda_leer() if "act:" + x["id"] == cid), None)
+        if a:
+            c = dict(c)
+            for k in CAMPOS_ACT:
+                if k in a and (a[k] != "" or k in ("q_comments", "q_freq", "q_band")):
+                    c[k] = a[k]
+            c["img"] = a.get("img", "")
+    return c
+
+
+def _enviar_pendientes(call, cids):
+    for cid in cids:
+        try:
+            bot_enviar_qsl(call, cid, _cfg_de(cid))
+        except Exception as e:
+            print("bot: envio desde el panel fallo (%s, %s): %s" % (call, cid, e), flush=True)
+
+
+def _libreta(call):
+    try:
+        return next((x for x in _http_json("http://127.0.0.1:5018/api/contactos", timeout=4) if x.get("call") == call), None)
+    except Exception:
+        return None
+
+
+@app.route("/api/aprs/bot/contacto", methods=["GET"])
+def api_bot_contacto_get():
+    call = re.sub(r"[^A-Z0-9]", "", request.args.get("call", "").upper())
+    return jsonify(_libreta(call) or {"call": call})
+
+
+@app.route("/api/aprs/bot/contacto", methods=["POST"])
+def api_bot_contacto_post():
+    b = request.get_json(silent=True) or {}
+    call = re.sub(r"[^A-Z0-9]", "", str(b.get("call", "")).upper())
+    mail = str(b.get("email", "")).strip()
+    if not re.fullmatch(r"[A-Z0-9]{3,10}", call):
+        return jsonify({"error": "indicativo inválido"}), 400
+    if not RE_MAIL_PANEL.match(mail) or len(mail) > 120:
+        return jsonify({"error": "correo inválido"}), 400
+    lib = _libreta(call) or {}
+    name = re.sub(r"[\x00-\x1f<>]", "", str(b.get("name", ""))).strip()[:80] or lib.get("name", "")
+    country = re.sub(r"[\x00-\x1f<>]", "", str(b.get("country", ""))).strip()[:60] or lib.get("country", "")
+    try:
+        _http_json("http://127.0.0.1:5018/api/contactos", {"call": call, "email": mail, "name": name, "country": country,
+                                                           "notes": lib.get("notes") or "Registrado por APRS"})
+    except urllib.error.HTTPError as e:
+        return jsonify({"error": "libreta: " + _err_http(e)}), 409
+    except Exception as e:
+        return jsonify({"error": "no se pudo guardar en la libreta: %s" % e}), 502
+    try:
+        _http_json("http://127.0.0.1:5013/api/store/qslcola/email", {"emails": {call: mail}})
+    except Exception as e:
+        return jsonify({"error": "no se pudo guardar el correo en la cola QSL: %s" % e}), 502
+    con = db()
+    try:
+        cids = [r[0] for r in con.execute("SELECT concurso FROM bot_part WHERE call=? AND qsl LIKE 'esperando correo%'", (call,))]
+        for cid in cids:
+            _bot_evento(con, cid, call, "correo", "anotado desde el panel")
+        con.commit()
+    finally:
+        con.close()
+    auto = []
+    for cid in cids:
+        if b.get("enviar", True) and _cfg_de(cid).get("auto"):
+            auto.append(cid)
+        else:
+            bot_marcar(call, cid, "en cola (correo recibido)")
+    if auto:
+        threading.Thread(target=_enviar_pendientes, args=(call, auto), daemon=True).start()
+    return jsonify({"ok": True, "actividades": len(cids), "enviando": len(auto)})
+# BOTMAIL-FIN
+# BOTSTATS-FIN
 
 
 if __name__ == "__main__":

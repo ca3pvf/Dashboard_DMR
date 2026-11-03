@@ -4,7 +4,7 @@
   GET  /api/salud                   chequeos + eventos (mismo formato que en pcbox)
   POST /api/salud/eventos/borrar
 Chequeos: hotspot en la red, API web del hotspot, internet, RAM y disco de este equipo."""
-import json, os, socket, threading, time, urllib.request
+import json, os, shutil, socket, subprocess, threading, time, urllib.request
 from collections import deque
 import psutil
 from flask import Flask, jsonify
@@ -82,13 +82,46 @@ def chequear_recursos():
               "%d%% usado" % uso)
 
 
+def _hotspot_ssh():
+    try:
+        h = json.load(open(HS_FILE))["hotspots"][0]
+        if h.get("ssh") and h.get("ip"):
+            return h["ip"], str(h.get("user") or "pi-star")
+    except Exception:
+        pass
+    return None, None
+
+
+def chequear_carga_hotspot():
+    """Carga del hotspot por SSH. Solo si el hotspot tiene SSH vinculado y este equipo tiene ssh; si no, no muestra nada."""
+    ip, user = _hotspot_ssh()
+    if not ip or not shutil.which("ssh"):
+        with _lock:
+            _checks.pop("hs_carga", None)
+        return
+    try:
+        p = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=6", "%s@%s" % (user, ip),
+                            "cut -d' ' -f2 /proc/loadavg; nproc"], capture_output=True, text=True, timeout=20)
+        partes = p.stdout.split()
+        carga, nuc = float(partes[0]), int(partes[1])
+    except Exception:
+        with _lock:
+            _checks.pop("hs_carga", None)
+        return
+    r = carga / max(nuc, 1)
+    registrar("hs_carga", "Carga de la Pi (hotspot)", "error" if r >= 1.0 else ("aviso" if r >= 0.75 else "ok"),
+              "carga 5 min: %.2f (%d núcleos)" % (carga, nuc))
+
+
 def bucle():
+    n = 0
     while True:
-        for f in (chequear_hotspot, chequear_internet, chequear_recursos):
+        for f in (chequear_hotspot, chequear_internet, chequear_recursos) + ((chequear_carga_hotspot,) if n % 2 == 0 else ()):
             try:
                 f()
             except Exception as e:
                 print("salud: %s fallo: %s" % (f.__name__, e), flush=True)
+        n += 1
         time.sleep(60)
 
 

@@ -646,6 +646,7 @@ return {list:list,render:render,mount:mount,flag:flag}
           <div style="margin:6px 0;font-size:0.85em;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
             <button class="qsl-btn primary" id="qc-add">Agregar a cola QSL (<span id="qc-sel-n">0</span>)</button>
             <button class="qsl-btn" id="qc-ver">Ver cola (<span id="qc-n">0</span>)</button>
+            <button class="qsl-btn" id="lh-recup" title="Compara el historial con el log del hotspot (últimas 48 h) y recupera los QSO que no se alcanzaron a registrar, por ejemplo si pcbox estuvo apagado">Recuperar QSO perdidos</button>
             <span id="qc-msg" style="opacity:.75"></span>
           </div>
           <div id="qc-box" style="display:none;margin:6px 0;font-size:0.85em">
@@ -3194,7 +3195,8 @@ async function cargarAprs(){
     const color = ok ? '#39ff14' : (s.conectado ? '#ffb300' : '#ff1744');
     const texto = ok ? 'CONECTADO' : (s.conectado ? 'SIN VERIFICAR' : 'DESCONECTADO');
     meta.innerHTML = '<span style="color:' + color + ';font-weight:700">' + texto + '</span> · ' +
-      aprsIcono() + aprsEsc(s.indicativo) + ' · ' + s.estaciones + ' estaciones (' + s.radio_km + ' km)';
+      aprsIcono() + aprsEsc(s.indicativo) + ' · ' + s.estaciones + ' estaciones (' + s.radio_km + ' km)' +
+      (s.nodo ? ' · nodo <b>' + aprsEsc(s.nodo) + '</b>' : '');
     const bal = document.getElementById('aprs-bal');
     bal.textContent = 'Baliza: ' + (s.baliza.activa ? 'ON · cada ' + s.baliza.intervalo_min + ' min' : 'OFF');
     bal.classList.toggle('on', s.baliza.activa);
@@ -6724,5 +6726,253 @@ function hsnxFecha(){
   init();
 })();
 </script><!-- SATHEX-FIN -->
+
+<!-- LHREC-INICIO -->
+<script>
+(function(){
+  const API = 'http://' + location.hostname + ':5005/api/salud';
+  const b = document.getElementById('lh-recup'), m = document.getElementById('qc-msg');
+  if(!b) return;
+  const msg = t => { if(m) m.textContent = t; };
+  b.addEventListener('click', async () => {
+    const txt = b.textContent;
+    b.disabled = true; b.textContent = 'Revisando…'; msg('');
+    try{
+      let r = await fetch(API + '/qso-faltantes');
+      let j = await r.json();
+      if(!r.ok) throw new Error(j.error || r.status);
+      if(!j.faltan){ msg('Historial completo: no faltan QSO (' + j.total_log + ' en el log del hotspot, últimas 48 h).'); return; }
+      if(!confirm('Faltan ' + j.faltan + ' de ' + j.total_log + ' QSO del log del hotspot (últimas 48 h). ¿Recuperarlos? Antes se guarda una copia de la base en la carpeta BAK.')) return;
+      b.textContent = 'Recuperando…';
+      r = await fetch(API + '/qso-recuperar', {method:'POST'});
+      j = await r.json();
+      if(!r.ok) throw new Error(j.error || r.status);
+      msg(j.insertados + ' QSO recuperados.');
+      if(typeof cargarLastHeard === 'function') cargarLastHeard();
+    }catch(e){
+      msg('No se pudo recuperar: ' + e.message);
+    }finally{
+      b.disabled = false; b.textContent = txt;
+    }
+  });
+})();
+</script>
+<!-- LHREC-FIN -->
+
+<!-- BOTSTATS-INICIO -->
+<script>
+(function(){
+  const API = 'http://' + location.hostname + ':5014/api/aprs/bot';
+  const tabs = document.getElementById('botc-tabs'), cont = document.getElementById('botc-cont');
+  if(!tabs || !cont) return;
+  const el = id => document.getElementById(id);
+  const esc = x => String(x == null ? '' : x).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const ETQ = {enviada:'✓ QSL enviada', en_cola:'en cola', esperando_correo:'esperando correo', sin_correo:'sin correo', error:'error', enviando:'enviando', nuevo:'nuevo', otro:'otro'};
+  const fecha = ts => new Date(ts * 1000).toLocaleString('es-CL', {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'});
+  const badge = c => '<span class="bot-st bot-st-' + esc(c.cod || 'otro') + '" title="' + esc(c.qsl) + '">' + esc(ETQ[c.cod] || c.cod) + '</span>';
+    const badgeP = (x, call) => x.cod === 'esperando_correo' ? '<span class="bot-st bot-st-esperando_correo" data-edit="' + esc(call) + '" style="cursor:pointer" title="Clic para completar los datos del contacto">esperando correo ✎</span>' : badge(x);
+  let D = null, sel = null, conocidas = new Set();
+
+  const st = document.createElement('style');
+  st.textContent = '#bst table{width:100%;border-collapse:collapse;font-size:.88em}#bst th,#bst td{padding:4px 8px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap}#bst tr.bst-ok td{background:rgba(var(--green-rgb),0.10)}#bst td[data-call]{cursor:pointer;color:var(--amber)}#bst details{margin-top:12px}#bst summary{cursor:pointer;color:var(--amber)}';
+  document.head.appendChild(st);
+
+  const tab = document.createElement('button');
+  tab.type = 'button'; tab.className = 'cfg-tab'; tab.id = 'bst-tab'; tab.textContent = 'Estadísticas';
+  tabs.appendChild(tab);
+
+  const panel = document.createElement('div');
+  panel.id = 'bst'; panel.style.display = 'none';
+  panel.innerHTML =
+    '<div class="qsl-field-row">' +
+    '<label>Indicativo <input type="text" id="bst-q" autocomplete="off" style="width:110px"></label>' +
+    '<label>Mostrar <select id="bst-f"><option value="">Todos</option><option value="completo">Cumplieron todo</option>' +
+    '<option value="incompleto">No completaron</option><option value="pend">Con correo pendiente</option>' +
+    '<option value="error">Con error de envío</option></select></label>' +
+    '<button type="button" class="qsl-btn" id="bst-act">Actualizar</button>' +
+    '<button type="button" class="qsl-btn" id="bst-csv">Exportar CSV</button>' +
+    '<span id="bst-msg" style="opacity:.8;font-size:0.85em"></span></div>' +
+    '<div id="bst-sel" class="qsl-hint"></div><div id="bst-kpi" class="qsl-hint"></div>' +
+    '<div style="overflow-x:auto"><table><thead id="bst-head"></thead><tbody id="bst-body"></tbody></table></div>' +
+    '<div id="bst-pais" class="qsl-hint"></div>' +
+    '<details id="bst-reg"><summary>Registro de actividad (eventos y mensajes)</summary><div id="bst-regc" class="qsl-hint">Cargando…</div></details>';
+  cont.parentNode.insertBefore(panel, cont.nextSibling);
+  /* BOTMAIL-INICIO */
+  const form = document.createElement('div');
+  form.id = 'bst-form';
+  form.style.cssText = 'display:none;border:1px solid var(--amber);border-radius:6px;padding:10px;margin:10px 0';
+  panel.insertBefore(form, el('bst-sel'));
+  async function abrirForm(call){
+    form.style.display = ''; form.textContent = 'Cargando datos de ' + call + '…';
+    let c = {};
+    try{ c = await (await fetch(API + '/contacto?call=' + encodeURIComponent(call))).json(); }catch(e){}
+    form.innerHTML = '<div class="qsl-section-label">Completar datos de ' + esc(call) + '</div>' +
+      '<div class="qsl-field-row">' +
+      '<label>Nombre <input type="text" id="bf-name" autocomplete="off" style="width:200px"></label>' +
+      '<label>Correo <input type="text" id="bf-mail" autocomplete="off" style="width:240px"></label>' +
+      '<label>País <input type="text" id="bf-pais" autocomplete="off" style="width:130px"></label></div>' +
+      '<div class="qsl-field-row"><label class="qsl-checkbox"><input type="checkbox" id="bf-env" checked> Enviar la QSL ahora (si el envío automático está activado)</label></div>' +
+      '<div class="qsl-field-row"><button type="button" class="qsl-btn primary" id="bf-ok">Guardar</button>' +
+      '<button type="button" class="qsl-btn" id="bf-qrz">Buscar en QRZ</button>' +
+      '<button type="button" class="qsl-btn" id="bf-no">Cancelar</button>' +
+      '<span id="bf-msg" style="opacity:.8;font-size:0.85em"></span></div>';
+    el('bf-name').value = c.name || ''; el('bf-mail').value = c.email || ''; el('bf-pais').value = c.country || '';
+    el('bf-no').onclick = () => { form.style.display = 'none'; };
+    el('bf-qrz').onclick = async () => {
+      const m = el('bf-msg'); m.textContent = 'Consultando QRZ…';
+      try{
+        const q = await (await fetch('http://' + location.hostname + ':5015/api/qrz/lookup?call=' + encodeURIComponent(call))).json();
+        if(!q.found){ m.textContent = q.error ? 'QRZ: ' + q.error : 'QRZ no encontró ese indicativo.'; return; }
+        if(!el('bf-name').value) el('bf-name').value = q.name || '';
+        if(!el('bf-mail').value) el('bf-mail').value = q.email || '';
+        if(!el('bf-pais').value) el('bf-pais').value = q.country || '';
+        m.textContent = 'Datos de QRZ cargados (revisa antes de guardar).';
+      }catch(e){ m.textContent = 'No se pudo consultar QRZ.'; }
+    };
+    el('bf-ok').onclick = async () => {
+      const m = el('bf-msg'); m.textContent = 'Guardando…'; el('bf-ok').disabled = true;
+      try{
+        const r = await fetch(API + '/contacto', {method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({call: call, name: el('bf-name').value, email: el('bf-mail').value, country: el('bf-pais').value, enviar: el('bf-env').checked})});
+        const j = await r.json();
+        if(!r.ok) throw new Error(j.error || r.status);
+        form.style.display = 'none';
+        await cargar(true);
+        el('bst-msg').textContent = 'Datos de ' + call + ' guardados. ' + (j.enviando ? 'Enviando ' + j.enviando + ' QSL…' : (j.actividades ? j.actividades + ' actividad(es) en cola.' : ''));
+        setTimeout(() => cargar(true), 15000);
+      }catch(e){
+        m.textContent = 'No se pudo guardar: ' + e.message; el('bf-ok').disabled = false;
+      }
+    };
+    el('bf-mail').focus();
+  }
+  /* BOTMAIL-FIN */
+
+
+  function mostrar(on){
+    panel.style.display = on ? '' : 'none';
+    cont.style.display = on ? 'none' : '';
+    tab.classList.toggle('on', on);
+    if(on){ tabs.querySelectorAll('[data-botmodo]').forEach(b => b.classList.remove('on')); cargar(false); }
+  }
+  tabs.addEventListener('click', e => {
+    if(e.target === tab) mostrar(true);
+    else if(e.target.dataset && e.target.dataset.botmodo) mostrar(false);
+  });
+
+  function pasa(p){
+    const q = el('bst-q').value.trim().toUpperCase(), f = el('bst-f').value;
+    if(q && p.call.indexOf(q) < 0) return false;
+    const cs = Object.values(p.celdas);
+    if(f === 'completo') return p.completo;
+    if(f === 'incompleto') return !p.completo;
+    if(f === 'pend') return cs.some(c => ['en_cola','esperando_correo','enviando','nuevo'].indexOf(c.cod) >= 0);
+    if(f === 'error') return cs.some(c => c.cod === 'error');
+    return true;
+  }
+
+  function pintar(){
+    if(!D) return;
+    const cols = D.columnas || [];
+    el('bst-sel').innerHTML = (D.todas && D.todas.length)
+      ? 'Actividades que cuentan para «cumplió todo»: ' + D.todas.map(a => '<label style="margin-right:12px"><input type="checkbox" data-cid="' + esc(a.cid) + '"' +
+          (sel && sel.has(a.cid) ? ' checked' : '') + '> ' + esc(a.nombre) + '</label>').join('')
+      : '';
+    const e = D.estados || {};
+    const pend = (e.en_cola || 0) + (e.enviando || 0) + (e.nuevo || 0);
+    el('bst-kpi').innerHTML = '<b>' + D.participantes.length + '</b> participantes · <b style="color:var(--green)">' + D.completos +
+      '</b> cumplieron las ' + cols.length + ' actividades · QSL enviadas: ' + (e.enviada || 0) + ' · en cola: ' + pend +
+      ' · esperando correo: ' + (e.esperando_correo || 0) + ' · sin correo: ' + (e.sin_correo || 0) + ' · con error: ' + (e.error || 0) +
+      (D.cerrada ? '' : '<br>La campaña sigue en curso: «cumplió todo» se confirma al terminar la última actividad.');
+    el('bst-head').innerHTML = '<tr><th>Indicativo</th><th>País</th>' + cols.map(c => '<th title="' + esc(c.inicio) + ' → ' + esc(c.fin) + '">' + esc(c.nombre) + '</th>').join('') +
+      '<th>Actividades</th><th>Cumplió</th></tr>';
+    const filas = D.participantes.filter(pasa);
+    el('bst-body').innerHTML = filas.length ? filas.map(p =>
+      '<tr class="' + (p.completo ? 'bst-ok' : '') + '"><td data-call="' + esc(p.call) + '"><b>' + esc(p.call) + '</b></td><td>' + esc(p.pais || '—') + '</td>' +
+      cols.map(c => { const x = p.celdas[c.cid]; return '<td>' + (x ? badgeP(x, p.call) + ' <span style="opacity:.6">' + fecha(x.ts) + '</span>' : '<span style="opacity:.4">—</span>') + '</td>'; }).join('') +
+      '<td>' + p.n + ' de ' + cols.length + '</td><td>' + (p.completo ? '★ Sí' : 'No') + '</td></tr>').join('')
+      : '<tr><td colspan="' + (cols.length + 4) + '" style="opacity:.7">Sin participantes con este filtro.</td></tr>';
+    const pa = Object.keys(D.paises || {}).sort((a, b) => D.paises[b] - D.paises[a]);
+    el('bst-pais').textContent = pa.length ? 'Por país: ' + pa.map(k => k + ' ' + D.paises[k]).join(' · ') : '';
+  }
+
+  async function cargar(silencioso){
+    const msg = el('bst-msg');
+    if(!silencioso) msg.textContent = 'Cargando…';
+    try{
+      let ids = '';
+      if(sel !== null) ids = sel.size ? Array.from(sel).map(c => c.replace(/^act:/, '')).join(',') : 'none';
+      const r = await fetch(API + '/stats' + (ids ? '?ids=' + encodeURIComponent(ids) : ''));
+      const j = await r.json();
+      if(!r.ok) throw new Error(j.error || r.status);
+      D = j;
+      if(D.todas && D.todas.length){
+        const todos = D.todas.map(a => a.cid);
+        if(sel === null) sel = new Set(todos);
+        else todos.forEach(c => { if(!conocidas.has(c)) sel.add(c); });
+        conocidas = new Set(todos);
+      }
+      msg.textContent = '';
+      pintar();
+      if(el('bst-reg').open) registro();
+    }catch(err){
+      msg.textContent = 'No se pudo cargar: ' + err.message;
+    }
+  }
+
+  async function registro(){
+    const q = el('bst-q').value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const c = el('bst-regc');
+    try{
+      const r = await fetch(API + '/registro?limit=200' + (q ? '&call=' + q : ''));
+      const j = await r.json();
+      const nom = {}; ((D && D.todas) || []).concat((D && D.columnas) || []).forEach(a => { nom[a.cid] = a.nombre; });
+      const evt = {participa:'Participó (mensaje válido)', repetido:'Mensaje repetido', correo:'Correo anotado desde el panel'};
+      c.innerHTML = '<b>Eventos del bot</b> (desde que se activó este registro)<table><thead><tr><th>Fecha</th><th>Actividad</th><th>Indicativo</th><th>Evento</th></tr></thead><tbody>' +
+        (j.eventos.length ? j.eventos.map(x => '<tr><td>' + fecha(x.ts) + '</td><td>' + esc(nom[x.concurso] || x.concurso) + '</td><td>' + esc(x.call) + '</td><td>' +
+          esc(x.evento === 'estado' ? x.detalle : (evt[x.evento] || x.evento)) + '</td></tr>').join('') : '<tr><td colspan="4" style="opacity:.7">Sin eventos todavía.</td></tr>') +
+        '</tbody></table><br><b>Mensajes recibidos y contestados</b><table><thead><tr><th>Fecha</th><th></th><th>Indicativo</th><th>Texto</th><th>Estado</th></tr></thead><tbody>' +
+        (j.mensajes.length ? j.mensajes.map(x => '<tr><td>' + fecha(x.ts) + '</td><td>' + (x.dir === 'in' ? 'Recibido' : 'Enviado') + '</td><td>' + esc(x.peer) + '</td><td style="white-space:normal">' +
+          esc(x.text) + '</td><td>' + esc(x.estado) + '</td></tr>').join('') : '<tr><td colspan="5" style="opacity:.7">Sin mensajes.</td></tr>') + '</tbody></table>';
+    }catch(err){
+      c.textContent = 'No se pudo cargar el registro: ' + err.message;
+    }
+  }
+
+  function csv(){
+    if(!D) return;
+    const cols = D.columnas || [];
+    const cel = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+    const filas = [['Indicativo', 'País'].concat(cols.map(c => c.nombre), ['Actividades', 'Cumplió todo'])];
+    D.participantes.filter(pasa).forEach(p => filas.push([p.call, p.pais].concat(
+      cols.map(c => p.celdas[c.cid] ? p.celdas[c.cid].qsl : ''), [p.n + '/' + cols.length, p.completo ? 'Sí' : 'No'])));
+    const blob = new Blob(['\ufeff' + filas.map(f => f.map(cel).join(',')).join('\r\n')], {type: 'text/csv;charset=utf-8'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'bot-estadisticas-' + new Date().toISOString().slice(0, 10) + '.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+
+  el('bst-act').addEventListener('click', () => cargar(false));
+  el('bst-csv').addEventListener('click', csv);
+  el('bst-q').addEventListener('input', () => { pintar(); });
+  el('bst-f').addEventListener('change', pintar);
+  el('bst-sel').addEventListener('change', e => {
+    const cid = e.target.dataset && e.target.dataset.cid;
+    if(!cid || !sel) return;
+    if(e.target.checked) sel.add(cid); else sel.delete(cid);
+    cargar(false);
+  });
+  el('bst-body').addEventListener('click', e => {
+    const ed = e.target.closest('[data-edit]');
+    if(ed){ abrirForm(ed.dataset.edit); return; }
+    const call = e.target.closest('td[data-call]');
+    if(call){ el('bst-q').value = call.dataset.call; pintar(); el('bst-reg').open = true; registro(); }
+  });
+  el('bst-reg').addEventListener('toggle', () => { if(el('bst-reg').open) registro(); });
+  setInterval(() => { if(panel.style.display !== 'none' && !document.hidden) cargar(true); }, 60000);
+})();
+</script>
+<!-- BOTSTATS-FIN -->
 </body>
 </html>
