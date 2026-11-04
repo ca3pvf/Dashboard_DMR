@@ -1,0 +1,12 @@
+[Unit]
+Description=Grabador de tramas DMR (AMBE)
+After=network.target mmdvmhost.service
+
+[Service]
+ExecStart=/usr/bin/python3 /usr/local/sbin/dmr_rec.py
+Restart=always
+RestartSec=5
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

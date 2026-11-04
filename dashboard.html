@@ -682,9 +682,16 @@ return {list:list,render:render,mount:mount,flag:flag}
             <button class="lh-chip" data-rk-periodo="week">Semana</button>
             <button class="lh-chip" data-rk-periodo="month">Mes</button>
             <button class="lh-chip" data-rk-periodo="year">Año</button>
+            <button class="lh-chip" data-rk-periodo="custom">Otro mes</button>
             <span style="display:inline-block;width:14px"></span>
             <button class="lh-chip" data-rk-modo="count">Transmisiones</button>
             <button class="lh-chip" data-rk-modo="time">Tiempo hablado</button>
+            <span id="rk-custom" style="display:none;margin-left:6px;font-size:0.85em;white-space:nowrap">
+              <input type="month" id="rk-mes" title="Mes a consultar">
+              día <input type="number" id="rk-d1" min="1" max="31" placeholder="1" style="width:52px" title="Desde el día (vacío = desde el 1)">
+              al <input type="number" id="rk-d2" min="1" max="31" placeholder="fin" style="width:52px" title="Hasta el día (vacío = fin de mes)">
+              <button class="lh-chip" id="rk-todo-mes">Todo el mes</button>
+            </span>
           </div>
           <div style="max-height:300px;overflow-y:auto;">
             <table class="lh-table">
@@ -1128,6 +1135,7 @@ return {list:list,render:render,mount:mount,flag:flag}
             <button class="cfg-tab" data-cfg="tarjetas">Tarjetas</button>
             <button class="cfg-tab" data-cfg="contactos">Contactos</button>
             <button class="cfg-tab" data-cfg="pantalla">Pantalla</button>
+            <button class="cfg-tab" data-cfg="grabador">Grabador</button>
             <button class="cfg-tab" data-cfg="apariencia">Apariencia</button>
             <button class="cfg-tab" data-cfg="actualizaciones">Actualizaciones</button>
           </div>
@@ -1466,6 +1474,19 @@ return {list:list,render:render,mount:mount,flag:flag}
             </div>
           </div>
 
+          <div class="cfg-panel" id="cfg-panel-grabador">
+            <div class="cfg-box"><div class="cfg-box-title">Grabador de QSO</div>
+              <div id="rs-estado" class="qsl-hint">Consultando…</div>
+              <div class="qsl-field-row" style="margin-top:10px">
+                <button type="button" class="qsl-btn" id="rs-act">Actualizar estado</button>
+                <button type="button" class="qsl-btn" id="rs-inst">Instalar grabador en el hotspot</button>
+                <button type="button" class="qsl-btn" id="rs-quit">Quitar grabador</button>
+                <button type="button" class="qsl-btn" id="rs-dec">Preparar decodificador</button>
+              </div>
+              <div id="rs-msg" class="qsl-hint" style="white-space:pre-wrap"></div>
+              <div class="qsl-hint" style="margin-top:8px">El grabador guarda cada transmisión en la memoria del hotspot (se pierde al reiniciarlo); la tarjeta Grabaciones las copia a este equipo. Usa el primer hotspot de la lista. El decodificador (mbelib) se compila en este equipo y solo está disponible en Linux y macOS.</div>
+            </div>
+          </div>
           <div class="cfg-panel" id="cfg-panel-pantalla">
             <div class="cfg-box"><div class="cfg-box-title">Skin de la tarjeta Pantalla Hotspot</div>
               <div id="nx-cfg-lista"></div>
@@ -3000,6 +3021,8 @@ function rkTiempo(seg){
 function rkMarcar(){
   document.querySelectorAll('[data-rk-periodo]').forEach(b => b.classList.toggle('on', b.dataset.rkPeriodo === rkPeriodo));
   document.querySelectorAll('[data-rk-modo]').forEach(b => b.classList.toggle('on', b.dataset.rkModo === rkModo));
+  const rc = document.getElementById('rk-custom');
+  if(rc) rc.style.display = (rkPeriodo === 'custom') ? 'inline' : 'none';
 }
 document.querySelectorAll('[data-rk-periodo]').forEach(b => b.addEventListener('click', () => {
   rkPeriodo = b.dataset.rkPeriodo;
@@ -3011,19 +3034,64 @@ document.querySelectorAll('[data-rk-modo]').forEach(b => b.addEventListener('cli
   localStorage.setItem('pcbox-rk-modo', rkModo);
   rkMarcar(); cargarRanking();
 }));
+function rkMesActual(){ const n = new Date(); return n.getFullYear() + '-' + String(n.getMonth()+1).padStart(2,'0'); }
+let rkMes = localStorage.getItem('pcbox-rk-mes') || '';
+let rkD1 = localStorage.getItem('pcbox-rk-d1') || '';
+let rkD2 = localStorage.getItem('pcbox-rk-d2') || '';
+if(!/^\d{4}-\d{2}$/.test(rkMes)) rkMes = rkMesActual();
+(function(){
+  const m = document.getElementById('rk-mes'), a = document.getElementById('rk-d1'),
+        b = document.getElementById('rk-d2'), t = document.getElementById('rk-todo-mes');
+  if(!m || !a || !b || !t) return;
+  m.value = rkMes; m.max = rkMesActual(); a.value = rkD1; b.value = rkD2;
+  const cambio = () => {
+    if(/^\d{4}-\d{2}$/.test(m.value)) rkMes = m.value;
+    rkD1 = a.value; rkD2 = b.value;
+    localStorage.setItem('pcbox-rk-mes', rkMes);
+    localStorage.setItem('pcbox-rk-d1', rkD1);
+    localStorage.setItem('pcbox-rk-d2', rkD2);
+    cargarRanking();
+  };
+  m.addEventListener('change', cambio);
+  a.addEventListener('change', cambio);
+  b.addEventListener('change', cambio);
+  t.addEventListener('click', () => { a.value = ''; b.value = ''; cambio(); });
+})();
+function rkRango(){
+  const y = +rkMes.slice(0,4), mo = +rkMes.slice(5,7), ult = new Date(y, mo, 0).getDate();
+  const cl = (v, def) => { const n = parseInt(v, 10); return isNaN(n) ? def : Math.min(ult, Math.max(1, n)); };
+  return [cl(rkD1, 1), cl(rkD2, ult), ult];
+}
+function rkExtra(){
+  if(rkPeriodo !== 'custom') return '';
+  const r = rkRango(), p = x => String(x).padStart(2,'0');
+  return '&from=' + rkMes + '-' + p(r[0]) + '&to=' + rkMes + '-' + p(r[1]);
+}
+function rkEtiqueta(){
+  const r = rkRango();
+  let t = new Date(+rkMes.slice(0,4), +rkMes.slice(5,7) - 1, 1).toLocaleDateString('es-CL', {month:'long', year:'numeric'});
+  if(r[0] !== 1 || r[1] !== r[2]) t += ' (días ' + Math.min(r[0], r[1]) + '–' + Math.max(r[0], r[1]) + ')';
+  return t;
+}
 async function cargarRanking(){
   const body = document.getElementById('rk-body');
   const meta = document.getElementById('rk-meta');
   try{
     const min = (typeof lhMinDur !== 'undefined') ? lhMinDur : 0;
-    const d = await getJSON(EP.ranking + '?period=' + rkPeriodo + '&by=' + rkModo + '&min=' + min + '&limit=15');
+    const d = await getJSON(EP.ranking + '?period=' + rkPeriodo + '&by=' + rkModo + '&min=' + min + '&limit=15' + rkExtra());
     const rows = d.ranking || [];
     body.innerHTML = rows.length ? rows.map((r, i) =>
       '<tr><td>' + (i+1) + '</td><td class="lh-call">' + r.callsign + '</td><td>' + (r.name||'') +
       '</td><td>' + (r.country||'') + '</td><td>' + r.ptt + '</td><td>' + rkTiempo(r.segundos) + '</td></tr>'
     ).join('') : '<tr><td colspan="6" class="lh-empty">Sin registros en este período</td></tr>';
     let t = d.total + ' PTT';
-    if(d.primer_registro){
+    if(rkPeriodo === 'custom'){
+      t = rkEtiqueta() + ' · ' + t;
+      if(d.primer_registro && d.desde_utc && d.primer_registro > d.desde_utc){
+        const f = new Date(d.primer_registro.replace(' ', 'T') + 'Z');
+        if(!isNaN(f)) t += ' · historial desde ' + f.toLocaleDateString('es-CL');
+      }
+    }else if(d.primer_registro){
       const f = new Date(d.primer_registro.replace(' ', 'T') + 'Z');
       if(!isNaN(f)) t += ' · desde ' + f.toLocaleDateString('es-CL');
     }
@@ -6974,5 +7042,62 @@ function hsnxFecha(){
 })();
 </script>
 <!-- BOTSTATS-FIN -->
+<script>
+/* REC-SETUP-INICIO */
+(function(){
+  const panel = document.getElementById('cfg-panel-grabador');
+  if(!panel) return;
+  const API = 'http://' + location.hostname + ':5021/api/rec';
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const fila = (ok, t, x) => '<div style="margin:4px 0">' + (ok === true ? '🟢' : (ok === false ? '🔴' : '⚪')) + ' ' + t + (x ? ' <span style="opacity:.75">' + x + '</span>' : '') + '</div>';
+  const cmdFfmpeg = {linux:'sudo apt install ffmpeg', darwin:'brew install ffmpeg', win32:'winget install ffmpeg'};
+  let E = null, ocupado = false;
+  async function estado(){
+    $('rs-estado').textContent = 'Consultando…';
+    try{
+      E = await (await fetch(API + '/setup/status')).json();
+    }catch(e){
+      E = null;
+      $('rs-estado').innerHTML = fila(false, 'El servicio de grabaciones no responde (puerto 5021)');
+      return;
+    }
+    const h = E.hotspot, d = E.decodificador;
+    let t = '';
+    if(h.ssh){
+      t += fila(true, 'Hotspot ' + esc(h.host) + ': conectado por SSH');
+      t += fila(!!h.script && h.activo === 'active', 'Grabador en el hotspot: ' + (h.script ? 'instalado' : 'no instalado') + (h.script ? ', servicio ' + esc(h.activo) + (h.habilitado ? ' (' + esc(h.habilitado) + ')' : '') : ''), h.script ? h.grabaciones + ' grabaciones en el hotspot' : '');
+    }else{
+      t += fila(false, 'Hotspot ' + esc(h.host) + ': sin conexión SSH', esc(h.error || ''));
+    }
+    if(d.ok) t += fila(true, 'Decodificador (mbelib) listo', esc(d.ruta));
+    else if(d.error) t += fila(false, 'Decodificador encontrado pero no carga', esc(d.error));
+    else t += fila(false, 'Decodificador (mbelib) no instalado', d.plataforma === 'win32' ? 'no disponible en Windows' : (d.compilador ? 'compilador: ' + esc(d.compilador) : 'falta compilador de C'));
+    t += fila(!!E.ffmpeg, E.ffmpeg ? 'ffmpeg instalado (MP3 disponible)' : 'ffmpeg no instalado: sin MP3', E.ffmpeg ? '' : esc(cmdFfmpeg[d.plataforma] || 'instálalo con el gestor de tu sistema'));
+    $('rs-estado').innerHTML = t;
+    $('rs-inst').disabled = ocupado || !h.ssh || !E.archivos;
+    $('rs-quit').disabled = ocupado || !h.ssh || !h.script;
+    $('rs-dec').disabled = ocupado || d.plataforma === 'win32' || !d.fuente || !d.compilador;
+  }
+  async function accion(url, cuerpo, rotulo){
+    ocupado = true; ['rs-inst','rs-quit','rs-dec'].forEach(i => $(i).disabled = true);
+    $('rs-msg').textContent = rotulo + '…';
+    try{
+      const r = await fetch(API + url, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(cuerpo || {})});
+      const d = await r.json();
+      $('rs-msg').textContent = (d.ok ? 'Listo. ' : 'Error: ') + (d.error || d.salida || '');
+    }catch(e){ $('rs-msg').textContent = 'Error: ' + e.message; }
+    ocupado = false;
+    estado();
+  }
+  $('rs-act').addEventListener('click', estado);
+  $('rs-inst').addEventListener('click', () => { if(confirm('Se copiarán dmr_rec.py y dmr-rec.service al hotspot (' + (E ? E.hotspot.host : '') + ') y se activará el servicio. El hotspot puede quedar 1 a 2 segundos con el sistema de archivos en escritura. ¿Continuar?')) accion('/setup/hotspot', {accion:'instalar'}, 'Instalando grabador en el hotspot'); });
+  $('rs-quit').addEventListener('click', () => { if(confirm('Se detendrá y quitará el grabador del hotspot y se borrarán sus grabaciones temporales de allí. Las ya copiadas a este equipo se conservan. ¿Continuar?')) accion('/setup/hotspot', {accion:'quitar'}, 'Quitando grabador del hotspot'); });
+  $('rs-dec').addEventListener('click', () => accion('/setup/decodificador', {}, 'Compilando decodificador (puede tardar unos segundos)'));
+  document.querySelectorAll('[data-cfg="grabador"]').forEach(b => b.addEventListener('click', estado));
+  if(localStorage.getItem('pcbox-config-tab') === 'grabador') estado();
+})();
+/* REC-SETUP-FIN */
+</script>
 </body>
 </html>

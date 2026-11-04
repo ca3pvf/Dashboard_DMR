@@ -158,7 +158,7 @@ def cargar_lib():
     global _LIB
     if _LIB:
         return _LIB
-    for r in (os.environ.get("MBELIB"), HOME + "/mbelib/libmbe.so", HOME + "/mbelib/build/libmbe.so", BASE + "/libmbe.so"):
+    for r in (os.environ.get("MBELIB"), os.path.join(LOCAL, "libmbe.so"), HOME + "/mbelib/libmbe.so", HOME + "/mbelib/build/libmbe.so", BASE + "/libmbe.so"):
         if r and os.path.exists(r):
             lib = ctypes.CDLL(r)
             lib.mbe_initMbeParms.argtypes = [ctypes.c_void_p] * 3
@@ -391,6 +391,128 @@ def api_send():
         return jsonify({"error": ms._err_texto(e)}), 502
     ms.sumar_envio()
     return jsonify({"ok": True})
+
+
+# ---------- instalacion del grabador (hotspot, decodificador, ffmpeg) ----------
+import sys as _sys
+
+
+def _dir_setup(nombre):
+    for d in (os.path.join(os.path.dirname(os.path.abspath(__file__)), nombre),
+              os.path.join(BASE, "services", nombre),
+              os.path.join(getattr(_sys, "_MEIPASS", "") or "", "services", nombre)):
+        if os.path.isdir(d):
+            return d
+    return None
+
+
+def _ssh(cmd, t=60):
+    u, ip = hotspot()
+    return subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=6", "%s@%s" % (u, ip), cmd],
+                          capture_output=True, text=True, timeout=t)
+
+
+def _lib_info():
+    for r in (os.environ.get("MBELIB"), os.path.join(LOCAL, "libmbe.so"), HOME + "/mbelib/libmbe.so",
+              HOME + "/mbelib/build/libmbe.so", BASE + "/libmbe.so"):
+        if r and os.path.exists(r):
+            try:
+                ctypes.CDLL(r)
+                return r, None
+            except OSError as e:
+                return r, str(e)[:150]
+    return None, None
+
+
+def _compilador():
+    return next((c for c in ("gcc", "cc", "clang") if shutil.which(c)), None)
+
+
+@app.route("/api/rec/setup/status")
+def api_setup_status():
+    u, ip = hotspot()
+    hs = {"host": "%s@%s" % (u, ip), "ssh": False}
+    try:
+        r = _ssh("echo A=$(systemctl is-active dmr-rec 2>&1); echo E=$(systemctl is-enabled dmr-rec 2>&1); "
+                 "p=$(systemctl cat dmr-rec 2>/dev/null | grep '^ExecStart=' | awk '{print $NF}'); [ -n \"$p\" ] && [ -f \"$p\" ] && echo S=SI || echo S=NO; echo N=$(ls -1 /tmp/dmr_rec 2>/dev/null | wc -l)", 15)
+        kv = dict(l.split("=", 1) for l in r.stdout.split() if "=" in l)
+        if kv:
+            hs.update(ssh=True, activo=kv.get("A", ""), habilitado=kv.get("E", ""), script=kv.get("S") == "SI",
+                      grabaciones=int(kv["N"]) if kv.get("N", "").isdigit() else 0)
+        else:
+            hs["error"] = (r.stderr or "sin respuesta").strip()[:150]
+    except Exception as e:
+        hs["error"] = str(e)[:150]
+    ruta, err = _lib_info()
+    return jsonify({"hotspot": hs, "archivos": bool(_dir_setup("rec_hotspot")),
+                    "decodificador": {"ok": bool(ruta) and not err, "ruta": ruta, "error": err,
+                                      "compilador": _compilador(), "fuente": bool(_dir_setup("rec_mbelib")),
+                                      "plataforma": _sys.platform},
+                    "ffmpeg": bool(shutil.which("ffmpeg"))})
+
+
+@app.route("/api/rec/setup/hotspot", methods=["POST"])
+def api_setup_hotspot():
+    accion = str((request.get_json(silent=True) or {}).get("accion", ""))
+    u, ip = hotspot()
+    destino = "%s@%s" % (u, ip)
+    RW = "ro=0; findmnt -no OPTIONS / | tr ',' '\\n' | grep -qx ro && ro=1; [ $ro = 1 ] && sudo mount -o remount,rw /; "
+    RO = "; rc=$?; [ $ro = 1 ] && sudo mount -o remount,ro /; echo ACTIVO=$(systemctl is-active dmr-rec); exit $rc"
+    try:
+        if accion == "instalar":
+            d = _dir_setup("rec_hotspot")
+            if not d or not all(os.path.exists(os.path.join(d, f)) for f in ("dmr_rec.py", "dmr-rec.service")):
+                return jsonify({"error": "faltan los archivos del grabador en este programa"}), 500
+            r = subprocess.run(["scp", "-q", "-o", "BatchMode=yes", "-o", "ConnectTimeout=6",
+                                os.path.join(d, "dmr_rec.py"), os.path.join(d, "dmr-rec.service"), destino + ":/tmp/"],
+                               capture_output=True, text=True, timeout=60)
+            if r.returncode:
+                return jsonify({"error": "no se pudo copiar al hotspot por SSH: " + (r.stderr or "sin respuesta").strip()[:150]}), 502
+            cmd = (RW + "( set -e; sudo install -m 755 /tmp/dmr_rec.py /usr/local/sbin/dmr_rec.py; "
+                   "sudo install -m 644 /tmp/dmr-rec.service /etc/systemd/system/dmr-rec.service; "
+                   "sudo systemctl daemon-reload; sudo systemctl enable --now dmr-rec; sleep 2 ); "
+                   "rm -f /tmp/dmr_rec.py /tmp/dmr-rec.service" + RO)
+        elif accion == "quitar":
+            cmd = (RW + "( set -e; sudo systemctl disable --now dmr-rec; "
+                   "p=$(systemctl cat dmr-rec | grep '^ExecStart=' | awk '{print $NF}'); sudo rm -f /etc/systemd/system/dmr-rec.service /usr/local/sbin/dmr_rec.py; case \"$p\" in */dmr_rec.py) sudo rm -f \"$p\";; esac; "
+                   "sudo systemctl daemon-reload ); rm -rf /tmp/dmr_rec" + RO)
+        else:
+            return jsonify({"error": "accion invalida"}), 400
+        r = _ssh(cmd, 120)
+    except Exception as e:
+        return jsonify({"error": str(e)[:200]}), 502
+    salida = ((r.stdout or "") + (r.stderr or "")).strip()[-400:]
+    return jsonify({"ok": r.returncode == 0, "accion": accion, "salida": salida})
+
+
+@app.route("/api/rec/setup/decodificador", methods=["POST"])
+def api_setup_decoder():
+    global _LIB
+    if _sys.platform.startswith("win"):
+        return jsonify({"error": "En Windows el decodificador no se puede preparar automaticamente (no hay compilador). "
+                                 "Las grabaciones se pueden usar desde Linux o macOS."}), 400
+    src = _dir_setup("rec_mbelib")
+    if not src:
+        return jsonify({"error": "este programa no trae el codigo de mbelib"}), 500
+    cc = _compilador()
+    if not cc:
+        return jsonify({"error": "falta un compilador de C. Linux: sudo apt install build-essential · macOS: xcode-select --install"}), 400
+    import glob
+    fuentes = sorted(f for f in glob.glob(os.path.join(src, "*.c")) if "test" not in os.path.basename(f).lower())
+    out = os.path.join(LOCAL, "libmbe.so")
+    tmp = out + ".tmp"
+    try:
+        r = subprocess.run([cc, "-shared", "-fPIC", "-O2", "-I", src, "-o", tmp] + fuentes + ["-lm"],
+                           capture_output=True, text=True, timeout=180)
+    except Exception as e:
+        return jsonify({"error": str(e)[:200]}), 500
+    if r.returncode:
+        return jsonify({"error": "fallo la compilacion: " + (r.stderr or "")[-300:]}), 500
+    os.replace(tmp, out)
+    _LIB = None
+    ruta, err = _lib_info()
+    return jsonify({"ok": not err, "ruta": ruta, "error": err})
+
 
 
 if __name__ == "__main__":

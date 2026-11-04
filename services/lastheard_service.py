@@ -262,10 +262,25 @@ def lastheard_search():
                     "primero": tot[2], "ultimo": tot[3], "mostrando": len(out)})
 
 
+def rango_custom(d1, d2):
+    """d1 y d2 = 'AAAA-MM-DD' en hora local (d2 incluido). Devuelve (desde_utc, hasta_utc) o None."""
+    try:
+        a = datetime.strptime(d1, "%Y-%m-%d")
+        b = datetime.strptime(d2, "%Y-%m-%d")
+    except ValueError:
+        return None
+    if b < a:
+        a, b = b, a
+    f = "%Y-%m-%d %H:%M:%S"
+    ini = a.astimezone().astimezone(timezone.utc).strftime(f)
+    fin = (b + timedelta(days=1)).astimezone().astimezone(timezone.utc).strftime(f)
+    return ini, fin
+
+
 @app.route("/api/ranking")
 def ranking():
     period = request.args.get("period", "day")
-    if period not in ("day", "week", "month", "year"):
+    if period not in ("day", "week", "month", "year", "custom"):
         period = "day"
     by = request.args.get("by", "count")
     orden = "seg DESC, n DESC" if by == "time" else "n DESC, seg DESC"
@@ -278,12 +293,21 @@ def ranking():
     except ValueError:
         limite = 10
     hs = slot_param("hs", "all")
-    desde = desde_utc(period)
+    hasta = "9999-12-31 23:59:59"
+    if period == "custom":
+        rg = rango_custom(request.args.get("from", ""), request.args.get("to", ""))
+        if rg:
+            desde, hasta = rg
+        else:
+            period = "day"
+            desde = desde_utc("day")
+    else:
+        desde = desde_utc(period)
     filtro_hs = "" if hs == "all" else " AND hs = ?"
-    args = [desde, minimo] + ([] if hs == "all" else [hs])
+    args = [desde, hasta, minimo] + ([] if hs == "all" else [hs])
     # una misma transmisión escuchada por varios hotspots cuenta una sola vez
     base = ("SELECT callsign, MAX(name) AS name, MAX(country) AS country, time_utc, target, mode, "
-            "MAX(duration) AS duration FROM tx WHERE time_utc >= ? AND duration >= ?" + filtro_hs +
+            "MAX(duration) AS duration FROM tx WHERE time_utc >= ? AND time_utc < ? AND duration >= ?" + filtro_hs +
             " GROUP BY callsign, time_utc, target, mode")
     con = sqlite3.connect(DB_PATH, timeout=10)
     try:
@@ -300,7 +324,8 @@ def ranking():
         con.close()
     return jsonify({
         "period": period, "by": by, "min": minimo, "hs": hs,
-        "desde_utc": desde, "primer_registro": primero, "total": total,
+        "desde_utc": desde, "hasta_utc": None if hasta.startswith("9999") else hasta,
+        "primer_registro": primero, "total": total,
         "ranking": [{"callsign": r[0], "name": r[1], "country": r[2],
                      "ptt": r[3], "segundos": r[4]} for r in rows],
     })
