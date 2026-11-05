@@ -173,6 +173,8 @@ a{color:inherit;}
 }
 .card-title{font-size:0.8em;font-weight:600;letter-spacing:0.5px;color:var(--text);}
 .card-meta{font-size:0.65em;color:var(--text-dim);font-family:var(--mono);}
+.aprs-nodo{color:#00f0ff;font-weight:700;letter-spacing:0.5px;text-shadow:0 0 6px rgba(0,240,255,.55);}
+:root[data-mode="light"] .aprs-nodo{color:#0077b6;}
 .card-body{padding:12px 14px;}
 
 .stat-row{
@@ -663,7 +665,7 @@ return {list:list,render:render,mount:mount,flag:flag}
           </div>
           <div style="max-height:300px;overflow-y:auto;">
             <table class="lh-table">
-              <thead><tr><th></th><th>Hora</th><th>Call</th><th>Nombre</th><th>País</th><th>Modo</th><th>Target</th><th>Dur.</th></tr></thead>
+              <thead><tr><th></th><th>Fecha y hora</th><th>Call</th><th>Nombre</th><th>País</th><th>Modo</th><th>Target</th><th>Dur.</th></tr></thead>
               <tbody id="lh-body"><tr><td colspan="8" class="lh-empty">Cargando...</td></tr></tbody>
             </table>
           </div>
@@ -2253,6 +2255,15 @@ function utcAHoraLocal(utcString){
   return p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());
 }
 
+function utcAFechaCortaHora(utcString){
+  // "YYYY-MM-DD HH:MM:SS" en UTC -> "DD/MM HH:MM:SS" en hora local
+  if(!utcString) return '--';
+  const d = new Date(utcString.replace(' ', 'T') + 'Z');
+  if(isNaN(d)) return utcString;
+  const p = n => String(n).padStart(2,'0');
+  return p(d.getDate())+'/'+p(d.getMonth()+1)+' '+p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());
+}
+
 function utcAFechaHoraLocal(utcString){
   // "YYYY-MM-DD HH:MM:SS" en UTC -> "DD/MM/AAAA HH:MM:SS" en hora local
   if(!utcString) return '--';
@@ -2358,7 +2369,7 @@ function renderLhTabla(){
     body.innerHTML = rows.slice(0, lhBusq ? rows.length : lhCount).map(t => `
       <tr>
         <td><input type="checkbox" class="qc-sel" data-k="${encodeURIComponent(qcKey(t))}"${qcSel&&qcSel.has(qcKey(t))?' checked':''}></td>
-        <td>${utcAHoraLocal(t.time_utc)}</td>
+        <td style="white-space:nowrap">${utcAFechaCortaHora(t.time_utc)}</td>
         <td class="lh-call">${typeof lhQrz==='function'?lhQrz(t.callsign||''):(t.callsign||'')}</td>
         <td>${t.name||''}</td>
         <td>${t.country||''}</td>
@@ -3264,7 +3275,9 @@ async function cargarAprs(){
     const texto = ok ? 'CONECTADO' : (s.conectado ? 'SIN VERIFICAR' : 'DESCONECTADO');
     meta.innerHTML = '<span style="color:' + color + ';font-weight:700">' + texto + '</span> · ' +
       aprsIcono() + aprsEsc(s.indicativo) + ' · ' + s.estaciones + ' estaciones (' + s.radio_km + ' km)' +
-      (s.nodo ? ' · nodo <b>' + aprsEsc(s.nodo) + '</b>' : '');
+      (s.nodo ? ' · nodo <b class="aprs-nodo">' + aprsEsc(s.nodo) + '</b>' : '');
+    const nd = meta.querySelector('.aprs-nodo'), tit = document.querySelector('#aprs .card-title');
+    if(nd && tit) nd.style.fontSize = getComputedStyle(tit).fontSize;
     const bal = document.getElementById('aprs-bal');
     bal.textContent = 'Baliza: ' + (s.baliza.activa ? 'ON · cada ' + s.baliza.intervalo_min + ' min' : 'OFF');
     bal.classList.toggle('on', s.baliza.activa);
@@ -4576,14 +4589,18 @@ setCfgTab(localStorage.getItem('pcbox-config-tab') || 'sistema');
     const titulo = document.querySelector('#' + id + ' .card-title');
     if(!titulo) return;
     const b = document.createElement('button');
-    b.type = 'button'; b.className = 'lh-chip'; b.style.margin = '0 auto 0 12px'; b.title = 'Mostrar u ocultar los filtros y opciones';
+    b.type = 'button'; b.className = 'lh-chip'; b.style.margin = '0 0 0 12px'; b.title = 'Mostrar u ocultar los filtros y opciones';
     ['mousedown', 'pointerdown', 'touchstart'].forEach(ev => b.addEventListener(ev, e => e.stopPropagation()));
     function aplicar(){
       objetivos[id]().forEach(e => { if(e) e.classList.toggle('filtro-oculto', !!est[id]); });
       b.textContent = (est[id] ? '▸' : '▾') + ' Filtros';
     }
     b.addEventListener('click', () => { est[id] = est[id] ? 0 : 1; localStorage.setItem(LSF, JSON.stringify(est)); aplicar(); });
-    titulo.insertAdjacentElement('afterend', b);
+    const cab = titulo.closest('.card-head') || titulo.parentElement;
+    const meta = cab.querySelector('.card-meta');
+    if(meta) meta.style.marginLeft = 'auto'; else b.style.marginLeft = 'auto';
+    cab.style.flexWrap = 'wrap'; cab.style.rowGap = '4px';
+    cab.appendChild(b);   /* a la derecha de la barra, junto a los botones de cerrar/minimizar */
     aplicar();
   });
 })();
