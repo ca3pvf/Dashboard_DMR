@@ -6771,21 +6771,22 @@ function hsnxFecha(){
 </script><!-- SATLISTA-FIN -->
 <!-- SATHEX-INI --><style>
 #sat-banner{position:fixed !important;top:50% !important;left:50% !important;right:auto !important;bottom:auto !important;
-  transform:translate(-50%,-50%) !important;width:clamp(280px,55vmin,640px) !important;aspect-ratio:1/0.866 !important;
-  padding:0 !important;margin:0 !important;box-sizing:border-box;background:#fff !important;border:0 !important;box-shadow:none !important;
-  clip-path:polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%);animation:none !important;color:#fff !important;
-  align-items:center;justify-content:center;text-align:center;font-weight:800;line-height:1.25;
-  font-size:clamp(14px,2.7vmin,26px);text-shadow:0 1px 3px rgba(0,0,0,.65);isolation:isolate}
-#sat-banner.on{display:flex !important}
-#sat-banner::before{content:"";position:absolute;inset:clamp(8px,1.6vmin,16px);z-index:-1;
-  clip-path:polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%);background:#d90000}
-#sat-banner.on:not(.paso)::before{animation:sathexblink 1s step-end infinite}
-#sat-banner.paso::before{background:#11a14a;animation:none}
-@keyframes sathexblink{0%{background:#e60000}50%{background:#9a0000}}
-#sat-hex-txt{display:block;max-width:64%;overflow-wrap:anywhere}
-#sat-banner #sat-x{position:absolute;top:7%;left:50%;right:auto;transform:translateX(-50%);z-index:1;width:1.9em;height:1.9em;
-  padding:0;border-radius:50%;background:rgba(0,0,0,.28);border:1px solid #fff;color:#fff;cursor:pointer;font-size:.8em;line-height:1}
-@media (prefers-reduced-motion:reduce){#sat-banner.on:not(.paso)::before{animation:none}}
+  transform:translate(-50%,-50%) !important;width:clamp(300px,60vmin,680px) !important;aspect-ratio:1/0.866 !important;
+  padding:0 !important;margin:0 !important;box-sizing:border-box;border:0 !important;box-shadow:none !important;
+  background:#e60000 !important;clip-path:polygon(0 0,100% 0,50% 100%);animation:none !important;
+  color:#000 !important;text-shadow:none !important;text-align:center;font-weight:800;line-height:1.25;
+  font-size:clamp(11px,2.3vmin,22px);isolation:isolate}
+#sat-banner.on{display:block !important}
+#sat-banner.on:not(.paso){animation:satcedablink 1s step-end infinite !important}
+#sat-banner.paso{background:#11a14a !important}
+#sat-banner::before{content:"";position:absolute;inset:0;z-index:-1;background:#fff;
+  clip-path:polygon(11% 7.33%,89% 7.33%,50% 85.33%)}
+#sat-hex-txt{position:absolute;top:15%;left:50%;transform:translateX(-50%);width:54%;display:block;
+  overflow-wrap:anywhere;text-wrap:balance}
+#sat-banner #sat-x{position:absolute;top:58%;left:50%;right:auto;transform:translateX(-50%);z-index:1;width:1.9em;height:1.9em;
+  padding:0;border-radius:50%;background:rgba(0,0,0,.06);border:1px solid #000;color:#000;cursor:pointer;font-size:.8em;line-height:1}
+@keyframes satcedablink{0%{background:#e60000}50%{background:#9a0000}}
+@media (prefers-reduced-motion:reduce){#sat-banner.on:not(.paso){animation:none !important}}
 </style><script>
 (function(){
   let n = 0;
