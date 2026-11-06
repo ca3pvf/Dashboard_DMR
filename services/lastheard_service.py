@@ -64,9 +64,19 @@ def hotspots():
     return _hs_cache["data"]
 
 
+def es_pistar(h):
+    return str(h.get("tipo", "wpsd")).lower() == "pistar"
+
+
 def api_url(h):
     puerto = int(h.get("http_port") or 80)
-    return "http://%s%s/api/" % (h["ip"], "" if puerto == 80 else ":%d" % puerto)
+    ruta = "/api/last_heard.php" if es_pistar(h) else "/api/"
+    return "http://%s%s%s" % (h["ip"], "" if puerto == 80 else ":%d" % puerto, ruta)
+
+
+def api_params(h):
+    # WPSD usa ?limit=N; el dashboard de Pi-Star usa ?num_transmissions=N
+    return {"num_transmissions": POLL_LIMIT} if es_pistar(h) else {"limit": POLL_LIMIT}
 
 
 # ---------------- historial (SQLite) ----------------
@@ -128,7 +138,7 @@ def poll_loop(slot):
             continue
         t0 = time.time()
         try:
-            resp = requests.get(api_url(h), params={"limit": POLL_LIMIT}, timeout=REQUEST_TIMEOUT)
+            resp = requests.get(api_url(h), params=api_params(h), timeout=REQUEST_TIMEOUT)
             resp.raise_for_status()
             data = resp.json()
             with _lock:

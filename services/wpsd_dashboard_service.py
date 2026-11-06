@@ -117,9 +117,12 @@ def validar(entrada, existentes):
             raise ValueError
     except (TypeError, ValueError):
         return None, "HS %d: puerto web inválido" % n
+    tipo = str(entrada.get("tipo", previo.get("tipo", "wpsd")) or "wpsd").lower()
+    if tipo not in ("wpsd", "pistar"):
+        tipo = "wpsd"
     return {"id": n, "name": nombre, "ip": ip, "user": user, "remote_port": port, "dmr_id": dmr,
             "ssh": bool(entrada.get("ssh")), "enabled": bool(entrada.get("enabled", True)),
-            "http_port": http_port}, None
+            "http_port": http_port, "tipo": tipo}, None
 
 
 # ---------------- consultas al hotspot ----------------
@@ -152,6 +155,46 @@ def get_network_status(hs):
     return status, True
 
 
+def es_pistar(h):
+    return str(h.get("tipo", "wpsd")).lower() == "pistar"
+
+
+# Pi-Star: MMDVMHost conecta directo a BrandMeister (sin DMRGateway) y no tiene RemoteCommand
+# activo; el estado sale de /etc/mmdvmhost y del log MMDVM.
+PISTAR_STATE_CMD = r"""
+echo "###MODES"
+awk '/^\[/{s=$0} /^Enable=/{print s "=" $0}' /etc/mmdvmhost | grep -E '^\[(D-Star|DMR|System Fusion|P25|NXDN|FM)\]='
+echo "###DMR"
+ls -t /var/log/pi-star/MMDVM-*.log 2>/dev/null | head -2 | tac | xargs -r cat | grep -E "DMR, (Logged into the master successfully|Login to the master has failed|Closing DMR Network|Opening DMR Network|Connection to the master has timed out)" | tail -n 1
+echo "###UP"
+uptime -p
+"""
+
+
+def get_pistar_status(hs):
+    out = ssh_run(hs, PISTAR_STATE_CMD)
+    status = estado_vacio()
+    if out is None:
+        return status, False, "desconocido"
+    sec, cur = {}, None
+    for line in out.splitlines():
+        if line.startswith("###"):
+            cur = line[3:].strip()
+            sec[cur] = []
+        elif cur:
+            sec[cur].append(line)
+    claves = {"D-Star": "dstar", "DMR": "dmr", "System Fusion": "ysf", "P25": "p25", "NXDN": "nxdn", "FM": "fm"}
+    for l in sec.get("MODES", []):
+        m = re.match(r"^\[(.+)\]=Enable=(\d)", l.strip())
+        if m and m.group(1) in claves:
+            status[claves[m.group(1)]] = "enabled" if m.group(2) == "1" else "disabled"
+    if status["dmr"] == "enabled":
+        eventos = " ".join(sec.get("DMR", []))
+        status["dmr"] = "conn" if "Logged into the master" in eventos else "disc"
+    uptime = ((sec.get("UP") or [""])[0]).strip() or "desconocido"
+    return status, True, uptime
+
+
 def tcp_ok(ip, puerto):
     try:
         with socket.create_connection((ip, int(puerto)), timeout=3):
@@ -176,7 +219,9 @@ def get_brandmeister_info(slot, dmr_id):
 
 
 def refrescar(slot, hs):
-    if hs.get("ssh"):
+    if hs.get("ssh") and es_pistar(hs):
+        net, reachable, uptime = get_pistar_status(hs)
+    elif hs.get("ssh"):
         net, reachable = get_network_status(hs)
         uptime = (ssh_run(hs, "uptime -p") or "desconocido") if reachable else "desconocido"
     else:

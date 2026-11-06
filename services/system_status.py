@@ -1,9 +1,12 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
+import os
 import psutil
 import shutil
+import subprocess
 import threading
 import time
 from collections import deque
+from urllib.parse import urlparse
 
 app = Flask(__name__)
 
@@ -17,6 +20,8 @@ _ultimo = {"cpu": None}
 @app.after_request
 def add_cors_headers(response):
     response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
     return response
 
 
@@ -78,6 +83,60 @@ def system_history():
     return jsonify({"paso_s": MUESTREO_S,
                     "t": [f[0] for f in filas], "cpu": [f[1] for f in filas],
                     "ram": [f[2] for f in filas], "temp": [f[3] for f in filas]})
+
+
+# ---------- VNC: activar / desactivar vncserver@1 desde el dashboard ----------
+VNC_UNIT = "vncserver@1.service"
+SYSTEMCTL = "/usr/bin/systemctl" if os.path.exists("/usr/bin/systemctl") else shutil.which("systemctl")
+
+
+def vnc_soportado():
+    # solo en equipos con systemd y la unidad vncserver@1 (en el portable de Windows/Mac no aparece)
+    if not SYSTEMCTL:
+        return False
+    try:
+        r = subprocess.run([SYSTEMCTL, "cat", VNC_UNIT], capture_output=True, text=True, timeout=5)
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
+def vnc_estado():
+    try:
+        r = subprocess.run([SYSTEMCTL, "is-active", VNC_UNIT], capture_output=True, text=True, timeout=5)
+        return r.stdout.strip() or "desconocido"
+    except Exception:
+        return "desconocido"
+
+
+@app.route("/api/vnc", methods=["GET", "POST", "OPTIONS"])
+def api_vnc():
+    if request.method == "OPTIONS":
+        return ("", 204)
+    if not vnc_soportado():
+        return jsonify({"soportado": False, "activo": False, "estado": "no disponible"})
+    if request.method == "POST":
+        # solo se acepta desde el propio dashboard (mismo equipo), no desde otras páginas web
+        origen = request.headers.get("Origin", "")
+        if origen and urlparse(origen).hostname != urlparse("//" + request.host).hostname:
+            return jsonify({"error": "origen no permitido"}), 403
+        accion = (request.get_json(silent=True) or {}).get("accion")
+        if accion not in ("start", "stop"):
+            return jsonify({"error": "acción inválida"}), 400
+        try:
+            r = subprocess.run(["sudo", "-n", SYSTEMCTL, accion, VNC_UNIT],
+                               capture_output=True, text=True, timeout=30)
+            error = None if r.returncode == 0 else ((r.stderr or r.stdout or "falló").strip()[:200])
+        except Exception as e:
+            error = str(e)
+        estado = vnc_estado()
+        out = {"soportado": True, "activo": estado == "active", "estado": estado}
+        if error:
+            out["error"] = error
+            return jsonify(out), 500
+        return jsonify(out)
+    estado = vnc_estado()
+    return jsonify({"soportado": True, "activo": estado == "active", "estado": estado})
 
 
 if __name__ == "__main__":

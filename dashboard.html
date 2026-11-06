@@ -597,7 +597,7 @@ return {list:list,render:render,mount:mount,flag:flag}
       <section class="card" id="sistema" style="--accent:var(--green)">
         <div class="card-head">
           <span class="card-title">SISTEMA PCBOX</span>
-          <span class="card-meta"><button type="button" class="lh-chip" id="sis-vista" title="Clic para cambiar la vista">Vista: clásica</button> <span id="sistema-meta">--</span></span>
+          <span class="card-meta"><button type="button" class="lh-chip" id="sis-vnc" style="display:none" title="Clic para activar o desactivar el VNC">VNC: --</button> <button type="button" class="lh-chip" id="sis-vista" title="Clic para cambiar la vista">Vista: clásica</button> <span id="sistema-meta">--</span></span>
         </div>
         <div class="card-body" style="padding:0;">
           <div class="stat-strip" id="sis-clasica">
@@ -1672,6 +1672,7 @@ return {list:list,render:render,mount:mount,flag:flag}
    ============================================================ */
 const EP = {
   system:      'http://' + location.hostname + ':5010/api/system',
+  vnc:         'http://' + location.hostname + ':5010/api/vnc',
   services:    'http://' + location.hostname + ':5005/status',
   wpsd:        'http://' + location.hostname + ':5008/api/wpsd',
   lastheard:   'http://' + location.hostname + ':5011/api/lastheard',
@@ -2133,6 +2134,47 @@ function sisAplicarVista(){
   sisAplicarVista();
 })();
 
+/* ---------- BOTÓN VNC (Sistema pcbox) ---------- */
+let vncActivo = null, vncBusy = false;
+function vncPintar(){
+  const b = document.getElementById('sis-vnc');
+  if(!b) return;
+  b.classList.toggle('on', vncActivo === true);
+  b.textContent = vncBusy ? 'VNC: …' : (vncActivo === null ? 'VNC: --' : (vncActivo ? 'VNC: activo' : 'VNC: apagado'));
+}
+async function vncCargar(){
+  const b = document.getElementById('sis-vnc');
+  if(!b || vncBusy) return;
+  try{
+    const d = await getJSON(EP.vnc);
+    if(!d.soportado){ b.style.display = 'none'; return; }
+    b.style.display = '';
+    vncActivo = !!d.activo;
+  }catch(e){ vncActivo = null; }
+  vncPintar();
+}
+(function(){
+  const b = document.getElementById('sis-vnc');
+  if(!b) return;
+  ['mousedown', 'pointerdown', 'touchstart'].forEach(ev => b.addEventListener(ev, e => e.stopPropagation()));
+  b.addEventListener('click', async () => {
+    if(vncBusy || vncActivo === null) return;
+    const accion = vncActivo ? 'stop' : 'start';
+    if(accion === 'stop' && !confirm('¿Apagar el VNC? Si estás conectado por VNC se cerrará tu sesión y perderás lo que tengas abierto ahí.')) return;
+    vncBusy = true; vncPintar();
+    try{
+      const r = await fetch(EP.vnc, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({accion})});
+      const d = await r.json();
+      vncActivo = !!d.activo;
+      if(!r.ok) alert('No se pudo cambiar el VNC: ' + (d.error || ('HTTP ' + r.status)));
+    }catch(e){
+      alert('No se pudo cambiar el VNC (sin respuesta del servicio de sistema)');
+    }
+    vncBusy = false; vncPintar();
+  });
+  vncPintar();
+})();
+
 /* ---------- SISTEMA ---------- */
 async function cargarSistema(){
   try{
@@ -2143,6 +2185,7 @@ async function cargarSistema(){
     document.getElementById('sis-temp-f').textContent = (d.temp_f ?? '--') + '°F';
     document.getElementById('sistema-meta').textContent = 'OK';
     sisGrafica(d);
+    vncCargar();
   }catch(e){
     document.getElementById('sistema-meta').textContent = 'sin datos';
   }
