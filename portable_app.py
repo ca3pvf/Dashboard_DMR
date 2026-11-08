@@ -445,8 +445,19 @@ def revisar_actualizacion(fresco=False):
 def aplicar_actualizacion():
     if FROZEN:
         return {"ok": False, "error": "Esta versión empaquetada no se actualiza sola: descarga la nueva desde GitHub."}
-    if (RES / ".git").is_dir():
-        return {"ok": False, "error": "Esta carpeta es un repositorio git: actualiza con «git pull»."}
+    if (RES / ".git").is_dir():          # carpeta git: se actualiza con git pull --ff-only (lo hace actualizar.py --detalle)
+        import json as _json
+        try:
+            p = subprocess.run([sys.executable, str(RES / "actualizar.py"), "--detalle"], capture_output=True,
+                               text=True, timeout=180, cwd=str(RES))
+            det = _json.loads((p.stdout or "").strip().splitlines()[-1])
+        except Exception as e:
+            return {"ok": False, "error": "No se pudo ejecutar el actualizador (%s)" % e.__class__.__name__}
+        _UPD["r"] = None
+        if det.get("ok"):
+            n = len(det.get("archivos") or [])
+            det["salida"] = ("Actualizado con git: %d archivo(s) (%s → %s)." % (n, det.get("sha_antes"), det.get("sha_despues"))) if n else "Ya tienes lo último publicado."
+        return det
     try:
         p = subprocess.run([sys.executable, str(RES / "actualizar.py")], capture_output=True, text=True,
                            timeout=180, cwd=str(RES))

@@ -596,7 +596,7 @@ return {list:list,render:render,mount:mount,flag:flag}
       <div class="row-pair">
       <section class="card" id="sistema" style="--accent:var(--green)">
         <div class="card-head">
-          <span class="card-title">SISTEMA PCBOX</span>
+          <span class="card-title">SISTEMA</span>
           <span class="card-meta"><button type="button" class="lh-chip" id="sis-vnc" style="display:none" title="Clic para activar o desactivar el VNC">VNC: --</button> <button type="button" class="lh-chip" id="sis-vista" title="Clic para cambiar la vista">Vista: clásica</button> <span id="sistema-meta">--</span></span>
         </div>
         <div class="card-body" style="padding:0;">
@@ -3510,7 +3510,7 @@ cargarTodo();
 /* Intervalos de actualización configurables (segundos). Se guardan en
    localStorage ('int_<clave>') y se aplican sin recargar la página. */
 const INTERVALOS = {
-  sistema:      {seg: 10, nombre: 'Sistema pcbox',     fn: () => cargarSistema()},
+  sistema:      {seg: 10, nombre: 'Sistema',     fn: () => cargarSistema()},
   hotspot:      {seg: 10, nombre: 'Hotspot WPSD',      fn: () => cargarHotspot()},
   lastheard:    {seg: 2,  nombre: 'Last Heard',        fn: () => cargarLastHeard()},
   brandmeister: {seg: 5,  nombre: 'BrandMeister',      fn: () => cargarBrandMeister()},
@@ -4260,9 +4260,8 @@ setCfgTab(localStorage.getItem('pcbox-config-tab') || 'sistema');
     if(R.error) h += '<br><span style="color:var(--amber)">' + esc(R.error) + '</span>';
     else if(R.hay_nueva){
       h += '<br><span style="color:var(--green)">Hay una versión nueva disponible.</span>';
-      if(R.es_git) h += ' Esta carpeta es un repositorio git: actualiza con «git pull».';
-      else if(R.congelado) h += ' Descárgala desde GitHub.';
-      else ap.style.display = '';
+      if(R.congelado) h += ' Descárgala desde GitHub.';
+      else{ ap.style.display = ''; if(R.es_git) h += ' Esta carpeta es un repositorio git: se actualizará con «git pull».'; }
     }else h += '<br>Estás al día.';
     e.innerHTML = h;
     punto(!!(R.hay_nueva && !R.error));
@@ -4622,7 +4621,7 @@ setCfgTab(localStorage.getItem('pcbox-config-tab') || 'sistema');
   let est = {}; try{ est = JSON.parse(localStorage.getItem(LSF) || '{}') || {}; }catch(e){}
   const $ = id => document.getElementById(id);
   const objetivos = {
-    lastheard: () => [$('lh-filters'), $('lh-q') && $('lh-q').parentElement, $('lh-mindur') && $('lh-mindur').closest('div')],
+    lastheard: () => [$('lh-filters'), $('lh-q') && $('lh-q').parentElement, $('lh-mindur') && $('lh-mindur').closest('div'), $('qc-add') && $('qc-add').parentElement],
     ranking: () => [document.querySelector('#ranking .lh-filters')],
     aprs: () => [...document.querySelectorAll('#aprs .lh-filters > :not([data-aprs-tab])')],
     grabaciones: () => [$('rec-filtros')],
@@ -4816,7 +4815,7 @@ setCfgTab(localStorage.getItem('pcbox-config-tab') || 'sistema');
 
 /* ---------- TARJETAS: cerrar / reactivar (se guarda por equipo) ---------- */
 var CARD_LS = 'pcbox-cards-cerradas';
-var CARD_NOMBRES = {sistema:'Sistema pcbox', hotspot:'Hotspot', lastheard:'Last Heard', ranking:'Ranking', aprs:'APRS',
+var CARD_NOMBRES = {sistema:'Sistema', hotspot:'Hotspot', lastheard:'Last Heard', ranking:'Ranking', aprs:'APRS',
   radioid:'RadioID', hsnx:'Pantalla Hotspot', brandmeister:'BrandMeister', protocolos:'Protocolos', qsl:'Generador QSL', satelites:'Satélites', sismos:'Sismos', grabaciones:'Grabaciones', salud:'Salud del sistema', guardia:'Libro de guardia'};
 var cardsCerradas = (function(){
   try{ const a = JSON.parse(localStorage.getItem(CARD_LS) || '[]'); return Array.isArray(a) ? a.filter(x => CARD_NOMBRES[x]) : []; }
