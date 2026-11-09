@@ -156,6 +156,34 @@ def validar_setup(b):
                         "ssh": bool(h.get("ssh"))}}, None
 
 
+def asegurar_ssh_compartido(ip, user):
+    """Agrega a ~/.ssh/config la conexión SSH compartida (ControlMaster) hacia el hotspot.
+    Sin esto cada consulta abre un login nuevo y satura al hotspot. No toca nada si ya hay
+    una entrada Host para esa IP, y se omite en Windows (su OpenSSH no soporta ControlMaster)."""
+    try:
+        import os
+        from pathlib import Path as _P
+        if os.name == "nt":
+            return
+        d = _P.home() / ".ssh"
+        d.mkdir(mode=0o700, exist_ok=True)
+        f = d / "config"
+        txt = f.read_text(encoding="utf-8", errors="ignore") if f.exists() else ""
+        if re.search(r"(?im)^\s*Host\s+(.*\s)?" + re.escape(ip) + r"(\s|$)", txt):
+            return
+        nuevo = not f.exists()
+        bloque = ("\n# Agregado por el dashboard portable: reutiliza una sola conexion SSH al hotspot\n"
+                  "Host %s\n    ControlMaster auto\n    ControlPath ~/.ssh/cm-%%C\n"
+                  "    ControlPersist 10m\n    ServerAliveInterval 15\n" % ip)
+        with open(f, "a", encoding="utf-8") as fh:
+            fh.write(bloque)
+        if nuevo:
+            f.chmod(0o600)
+        log("SSH: conexión compartida configurada para %s en ~/.ssh/config" % ip)
+    except Exception as e:
+        log("Aviso: no se pudo configurar la conexión SSH compartida (%s)" % e)
+
+
 def escribir_archivos(data, cfg):
     guardar_json(data / "config.json", cfg)
     h = cfg["hotspot"]
@@ -542,6 +570,8 @@ def main():
     if ssh and not shutil.which("ssh"):
         log("Aviso: no se encontró el comando 'ssh' en este equipo; se desactiva el acceso SSH.")
         ssh = False
+    if ssh:
+        asegurar_ssh_compartido(cfg["hotspot"]["ip"], cfg["hotspot"].get("user") or "pi-star")
     ctx = {"cfg": cfg, "data": data, "port": port, "ssh": ssh}
     log("Cargando servicios…")
     cargados = cargar_modulos(ctx)
