@@ -395,7 +395,7 @@ def _repo_y_rama():
         t = (RES / "actualizar.py").read_text(encoding="utf-8")
         return re.search(r'(?m)^REPO = "([^"]+)"', t).group(1), re.search(r'(?m)^RAMA = "([^"]+)"', t).group(1)
     except Exception:
-        return None, "main"
+        return "ca3pvf/Dashboard_DMR", "main"      # respaldo: en el .exe actualizar.py no viene incluido
 
 
 def _version_local():
