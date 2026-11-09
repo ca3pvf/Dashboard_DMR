@@ -56,6 +56,7 @@ MODULOS = [
     ("aprs", "aprs_service.py"),
     ("salud", "salud_lite.py"),
     ("rec", "rec_service.py"),
+    ("ubicacion", "ubicacion_service.py"),
 ]
 
 
