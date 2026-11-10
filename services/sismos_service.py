@@ -3,7 +3,7 @@
   GET /api/sismos?min=0   ultimos sismos, el mas reciente primero"""
 import json, math, os, re, threading, time, urllib.request
 from datetime import datetime, timezone
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, Response
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CACHE = os.path.join(BASE, "sismos_cache.json")
@@ -182,6 +182,86 @@ def bucle_usgs():
             US["error"] = str(e)[:150]
             print("sismos: usgs fallo: %s" % e, flush=True)
         time.sleep(USGS_POLL_S if ok else 60)   # tras una falla reintenta en 1 min, no en 5
+
+
+PAGINA_SISMO = r"""<!doctype html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sismo</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+html,body{height:100%;margin:0;background:#0b1020;color:#dfe7ff;font-family:system-ui,sans-serif}
+#info{position:absolute;z-index:1000;top:8px;left:8px;right:8px;max-width:340px;background:rgba(11,16,32,.9);
+border:1px solid #6b2b2b;border-radius:8px;padding:8px 10px;font-size:13px;line-height:1.5}
+#info b{color:#ff9d9d}
+#info a{color:#7df9ff}
+#map{height:100%}
+</style></head><body>
+<div id="info"></div><div id="map"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function(){
+var q=new URLSearchParams(location.search);
+function num(k){ var v=q.get(k); return (v===null||v==='')?NaN:parseFloat(v); }
+var lat=num('lat'), lon=num('lon'), hlat=num('hlat'), hlon=num('hlon'), mag=num('mag');
+var home=!isNaN(hlat)&&!isNaN(hlon);
+var info=document.getElementById('info');
+function fila(t,v,color){
+  var d=document.createElement('div');
+  var b=document.createElement('b'); b.textContent=t+' '; d.appendChild(b);
+  var s=document.createElement('span'); s.textContent=v; if(color) s.style.color=color; d.appendChild(s);
+  info.appendChild(d);
+}
+var R=Math.PI/180;
+function dist(a,b,c,d){
+  var f1=a*R,f2=c*R,x=Math.sin((f2-f1)/2),y=Math.sin((d-b)*R/2);
+  var h=x*x+Math.cos(f1)*Math.cos(f2)*y*y;
+  return 6371*2*Math.asin(Math.sqrt(h));
+}
+function rumbo(a,b,c,d){
+  var f1=a*R,f2=c*R,dl=(d-b)*R;
+  var y=Math.sin(dl)*Math.cos(f2), x=Math.cos(f1)*Math.sin(f2)-Math.sin(f1)*Math.cos(f2)*Math.cos(dl);
+  return (Math.atan2(y,x)/R+360)%360;
+}
+var col=mag>=6?'#ff5d5d':(mag>=5?'#ffb020':'#facc15');
+var mtxt='M '+(isNaN(mag)?'--':mag.toFixed(1));
+fila('Magnitud:',mtxt+(q.get('tipo')?' ('+q.get('tipo')+')':''),col);
+if(q.get('lugar')) fila('Lugar:',q.get('lugar'));
+if(q.get('hora')) fila('Hora:',q.get('hora'));
+if(q.get('prof')) fila('Profundidad:',q.get('prof')+' km');
+if(q.get('fuente')) fila('Fuente:',q.get('fuente'));
+var map=L.map('map',{worldCopyJump:true});
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,attribution:'&copy; OpenStreetMap'}).addTo(map);
+if(isNaN(lat)||isNaN(lon)){
+  fila('','Este sismo no trae coordenadas.'); map.setView([-30,-70],4);
+}else{
+  fila('Coordenadas:',lat.toFixed(2)+', '+lon.toFixed(2));
+  var b=L.latLngBounds([[lat,lon]]);
+  var rad=Math.max(6,(isNaN(mag)?3:mag)*3);
+  L.circleMarker([lat,lon],{radius:rad,color:col,fillColor:col,fillOpacity:.35,weight:2}).addTo(map).bindTooltip(mtxt,{permanent:true,direction:'top'});
+  if(home){
+    var pts=['N','NE','E','SE','S','SO','O','NO'];
+    var dk=dist(hlat,hlon,lat,lon), rb=rumbo(hlat,hlon,lat,lon);
+    fila('Distancia:',Math.round(dk)+' km · rumbo '+Math.round(rb)+'° '+pts[Math.round(rb/45)%8]);
+    L.circleMarker([hlat,hlon],{radius:6,color:'#7df9ff'}).addTo(map).bindTooltip('Mi estación');
+    L.polyline([[hlat,hlon],[lat,lon]],{color:'#7df9ff',weight:1.5,dashArray:'6 6'}).addTo(map);
+    b.extend([hlat,hlon]);
+    map.fitBounds(b.pad(0.4),{maxZoom:8});
+  }else{ map.setView([lat,lon],7); }
+}
+var rep=q.get('rep')||'';
+if(/^https:\/\/(sismologia\.cl|earthquake\.usgs\.gov)\//.test(rep)){
+  var dv=document.createElement('div'); dv.style.marginTop='4px';
+  var a=document.createElement('a'); a.href=rep; a.target='_blank'; a.rel='noopener'; a.textContent='Informe oficial ↗';
+  dv.appendChild(a); info.appendChild(dv);
+}
+})();
+</script></body></html>
+"""
+
+
+@app.route("/api/sismos/mapa")
+def api_mapa_sismo():
+    return Response(PAGINA_SISMO, mimetype="text/html")
 
 
 @app.route("/api/sismos/usgs")

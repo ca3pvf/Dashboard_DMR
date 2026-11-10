@@ -4392,11 +4392,25 @@ setCfgTab(localStorage.getItem('pcbox-config-tab') || 'sistema');
   const TH = 'text-align:left;color:var(--text-dim);font-weight:400;padding:2px 6px 2px 0;';
   const TD = 'padding:3px 6px 3px 0;border-top:1px solid var(--border);';
 
+  function miPos(){
+    let o = null; try{ o = JSON.parse(localStorage.getItem('pcbox-sys-wx-loc') || 'null'); }catch(e){}
+    const la = o && isFinite(o.lat) ? +o.lat : (typeof LAT !== 'undefined' ? LAT : 0);
+    const lo = o && isFinite(o.lon) ? +o.lon : (typeof LON !== 'undefined' ? LON : 0);
+    return [la, lo];
+  }
+  function mapaUrl(s){
+    const h = miPos();
+    const q = {lat: s.lat == null ? '' : s.lat, lon: s.lon == null ? '' : s.lon, mag: s.mag, tipo: s.tipo || '', lugar: s.lugar || '',
+      prof: s.prof == null ? '' : s.prof, hora: s.hora || '', fuente: s.fuente || '', rep: s.url || ''};
+    if(h[0] || h[1]){ q.hlat = h[0]; q.hlon = h[1]; }
+    return 'http://' + location.hostname + ':5022/api/sismos/mapa?' + Object.keys(q).map(k => k + '=' + encodeURIComponent(q[k])).join('&');
+  }
+
   function filas(){
     if(!D) return [];
     if(fuente === 'csn') return (D.sismos || []).map(s => ({mag:s.mag, tipo:s.tipo, lugar:s.lugar, prof:s.prof,
-      hora: s.local.slice(8, 10) + '/' + s.local.slice(5, 7) + ' ' + s.local.slice(11, 16), url:'https://sismologia.cl' + s.path}));
-    return (D[fuente] || []).map(s => ({mag:s.mag, tipo:s.tipo, lugar:s.lugar, prof:s.prof == null ? null : Math.round(s.prof), hora:hora(s.ts), url:s.url}));
+      hora: s.local.slice(8, 10) + '/' + s.local.slice(5, 7) + ' ' + s.local.slice(11, 16), url:'https://sismologia.cl' + s.path, lat:s.lat, lon:s.lon, fuente:'CSN'}));
+    return (D[fuente] || []).map(s => ({mag:s.mag, tipo:s.tipo, lugar:s.lugar, prof:s.prof == null ? null : Math.round(s.prof), hora:hora(s.ts), url:s.url, lat:s.lat, lon:s.lon, fuente:'USGS'}));
   }
   function pintar(){
     const cont = $('sis-lista'); if(!cont) return;
@@ -4410,7 +4424,7 @@ setCfgTab(localStorage.getItem('pcbox-config-tab') || 'sistema');
     cont.innerHTML = aviso + '<table style="width:100%;border-collapse:collapse;font-size:0.9em"><tr><th style="' + TH + '">Mag</th><th style="' + TH + '">Lugar</th><th style="' + TH + '">Prof.</th><th style="' + TH + '">Hora</th></tr>' +
       f.map(s => '<tr><td style="' + TD + 'font-weight:700;color:' + color(s.mag) + '">' + s.mag.toFixed(1) +
         (s.tipo ? ' <span style="font-weight:400;color:var(--text-dim);font-size:0.8em">' + esc(s.tipo) + '</span>' : '') + '</td>' +
-        '<td style="' + TD + '"><a href="' + esc(s.url) + '" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">' + esc(s.lugar) + '</a></td>' +
+        '<td style="' + TD + '"><a class="sis-ev" href="' + esc(mapaUrl(s)) + '" title="Ver en un mapa (Cmd/Ctrl+clic: pestaña nueva)" style="color:inherit;text-decoration:none">' + esc(s.lugar) + '</a></td>' +
         '<td style="' + TD + 'white-space:nowrap">' + (s.prof == null ? '--' : s.prof + ' km') + '</td>' +
         '<td style="' + TD + 'white-space:nowrap">' + s.hora + '</td></tr>').join('') + '</table>';
   }
@@ -4618,6 +4632,7 @@ setCfgTab(localStorage.getItem('pcbox-config-tab') || 'sistema');
 /* ---------- Filtros plegables: Last Heard, Ranking y APRS ---------- */
 (function(){
   const LSF = 'pcbox-filtros-ocultos';
+  const reaplicar = [];
   let est = {}; try{ est = JSON.parse(localStorage.getItem(LSF) || '{}') || {}; }catch(e){}
   const $ = id => document.getElementById(id);
   const objetivos = {
@@ -4637,7 +4652,14 @@ setCfgTab(localStorage.getItem('pcbox-config-tab') || 'sistema');
       objetivos[id]().forEach(e => { if(e) e.classList.toggle('filtro-oculto', !!est[id]); });
       b.textContent = (est[id] ? '▸' : '▾') + ' Filtros';
     }
-    b.addEventListener('click', () => { est[id] = est[id] ? 0 : 1; localStorage.setItem(LSF, JSON.stringify(est)); aplicar(); });
+    reaplicar.push(aplicar);
+    b.addEventListener('click', () => {
+      try{ est = JSON.parse(localStorage.getItem(LSF) || '{}') || {}; }catch(e){}
+      const objs = objetivos[id]().filter(Boolean);
+      const hoyOculto = objs.length ? objs.some(e => e.classList.contains('filtro-oculto')) : !!est[id];
+      est[id] = hoyOculto ? 0 : 1;
+      localStorage.setItem(LSF, JSON.stringify(est)); aplicar();
+    });
     const cab = titulo.closest('.card-head') || titulo.parentElement;
     const meta = cab.querySelector('.card-meta');
     if(meta) meta.style.marginLeft = 'auto'; else b.style.marginLeft = 'auto';
@@ -4645,6 +4667,14 @@ setCfgTab(localStorage.getItem('pcbox-config-tab') || 'sistema');
     cab.appendChild(b);   /* a la derecha de la barra, junto a los botones de cerrar/minimizar */
     aplicar();
   });
+  /* Al volver de reposo o de otra pestaña: releer el estado guardado y reaplicarlo al DOM actual */
+  function resync(){
+    try{ est = JSON.parse(localStorage.getItem(LSF) || '{}') || {}; }catch(e){}
+    reaplicar.forEach(f => f());
+  }
+  document.addEventListener('visibilitychange', () => { if(!document.hidden) resync(); });
+  window.addEventListener('pageshow', resync);
+  window.addEventListener('focus', resync);
 })();
 
 /* ---------- GRABACIONES de QSO: explorador ---------- */
@@ -7243,5 +7273,37 @@ function hsnxFecha(){
 })();
 /* REC-SETUP-FIN */
 </script>
+<!-- SISMAPA-JS-INI --><script>
+(function(){
+  let box = null;
+  function armar(){
+    box = document.createElement('div');
+    box.id = 'sis-modal';
+    box.style.cssText = 'display:none;position:fixed;inset:0;z-index:99990;background:rgba(0,0,0,.65);align-items:center;justify-content:center';
+    box.innerHTML = '<div style="position:relative;width:min(94vw,900px);height:min(86vh,640px);background:#101418;border:2px solid #e5534b;border-radius:10px;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,.6)">' +
+      '<div style="position:absolute;right:8px;top:6px;z-index:2;display:flex;gap:8px;align-items:center">' +
+      '<a id="sis-tab" target="_blank" rel="noopener" title="Abrir en una pestaña nueva" style="color:#fff;font:13px system-ui;background:rgba(0,0,0,.55);padding:3px 8px;border-radius:4px;text-decoration:none;cursor:pointer">↗ pestaña</a>' +
+      '<button type="button" id="sis-x" title="Cerrar (Esc)" style="background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.4);color:#fff;border-radius:4px;cursor:pointer;padding:2px 9px;font-size:15px">✕</button></div>' +
+      '<iframe id="sis-if" style="width:100%;height:100%;border:0"></iframe></div>';
+    document.body.appendChild(box);
+    box.addEventListener('click', e => { if(e.target === box || e.target.id === 'sis-x') cerrar(); });
+  }
+  function cerrar(){ if(!box) return; box.style.display = 'none'; box.querySelector('#sis-if').src = 'about:blank'; }
+  document.addEventListener('keydown', e => {
+    if(e.key === 'Escape' && box && box.style.display !== 'none'){ cerrar(); e.stopImmediatePropagation(); }
+  }, true);
+  document.addEventListener('click', ev => {
+    const a = ev.target.closest && ev.target.closest('a.sis-ev');
+    if(!a) return;
+    ev.preventDefault();
+    const u = a.href;
+    if(ev.metaKey || ev.ctrlKey || ev.shiftKey){ window.open(u, '_blank', 'noopener'); return; }
+    if(!box) armar();
+    box.querySelector('#sis-if').src = u;
+    box.querySelector('#sis-tab').href = u;
+    box.style.display = 'flex';
+  });
+})();
+</script><!-- SISMAPA-JS-FIN -->
 </body>
 </html>
