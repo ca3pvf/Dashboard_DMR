@@ -27,6 +27,7 @@ import urllib.request
 import webbrowser
 from pathlib import Path
 
+import ssh_broker
 from flask import Flask, Response, jsonify, request
 from werkzeug.serving import make_server
 
@@ -528,6 +529,7 @@ def crear_app(cargados, cfg):
     app.add_url_rule("/api/portable/info", "portable.info",
                      lambda: jsonify({"version": VERSION, "modulos": sorted(cargados), "ssh": app.config["SSH_ON"],
                                       "indicativo": cfg["callsign"], "datos": app.config["DATA_DIR"]}))
+    app.add_url_rule("/api/portable/perf", "portable.perf", lambda: jsonify(ssh_broker.stats()))
     app.add_url_rule("/api/portable/update-check", "portable.upd_check",
                      lambda: jsonify(revisar_actualizacion(request.args.get("fresh") == "1")))
     app.add_url_rule("/api/portable/update-apply", "portable.upd_apply",
@@ -572,6 +574,8 @@ def main():
         ssh = False
     if ssh:
         asegurar_ssh_compartido(cfg["hotspot"]["ip"], cfg["hotspot"].get("user") or "pi-star")
+    if ssh and ssh_broker.instalar():
+        log("SSH: sesión persistente activa (una sola conexión al hotspot en vez de un login por consulta)")
     ctx = {"cfg": cfg, "data": data, "port": port, "ssh": ssh}
     log("Cargando servicios…")
     cargados = cargar_modulos(ctx)
