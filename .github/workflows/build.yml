@@ -34,12 +34,15 @@ jobs:
         shell: bash
         run: |
           cd dist
+          V="${GITHUB_REF_NAME}"
+          case "$V" in v[0-9]*) ;; *) V="dev" ;; esac
+          N="pcbox-portable-${{ matrix.name }}-$V"
           if [ "$RUNNER_OS" = "Windows" ]; then
-            mv pcbox-portable.exe pcbox-portable-${{ matrix.name }}.exe
+            mv pcbox-portable.exe "$N.exe"
           else
-            mv pcbox-portable pcbox-portable-${{ matrix.name }}
-            tar czf pcbox-portable-${{ matrix.name }}.tar.gz pcbox-portable-${{ matrix.name }}
-            rm pcbox-portable-${{ matrix.name }}
+            mv pcbox-portable "$N"
+            tar czf "$N.tar.gz" "$N"
+            rm "$N"
           fi
       - uses: actions/upload-artifact@v4
         with:

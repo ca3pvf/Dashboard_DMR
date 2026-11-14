@@ -450,7 +450,8 @@ def revisar_actualizacion(fresco=False):
         return _UPD["r"]
     repo, rama = _repo_y_rama()
     r = {"version": _version_local(), "repo": repo, "ultima": None, "hay_nueva": False, "error": None,
-         "es_git": (RES / ".git").is_dir(), "congelado": FROZEN}
+         "es_git": (RES / ".git").is_dir(), "congelado": FROZEN and os.name != "nt",
+         "exe_actualizable": FROZEN and os.name == "nt"}
     if not repo or repo.startswith("USUARIO/"):
         r["error"] = "El actualizador no está configurado (REPO en actualizar.py)"
         return r
@@ -472,8 +473,104 @@ def revisar_actualizacion(fresco=False):
     return r
 
 
+_EXE_BUSY = threading.Lock()
+
+
+def _actualizar_exe():
+    """Windows (.exe): baja la versión nueva desde los Releases (con la versión en el nombre del archivo),
+    la verifica y la abre cuando este programa se cierre. El .exe anterior queda como respaldo."""
+    import json as _json, hashlib
+    if not _EXE_BUSY.acquire(blocking=False):
+        return {"ok": False, "error": "Ya hay una actualización en curso"}
+    try:
+        repo, _rama = _repo_y_rama()
+        if not re.fullmatch(r"[\w.\-]+/[\w.\-]+", repo or ""):
+            return {"ok": False, "error": "El actualizador no está configurado"}
+        try:
+            req = urllib.request.Request("https://api.github.com/repos/%s/releases/latest" % repo,
+                                         headers={"User-Agent": "pcbox-actualizador", "Accept": "application/vnd.github+json"})
+            with urllib.request.urlopen(req, timeout=15) as f:
+                rel = _json.loads(f.read(2000000).decode("utf-8", "replace"))
+        except Exception as e:
+            return {"ok": False, "error": "Sin conexión con GitHub (%s)" % e.__class__.__name__}
+        tag = str(rel.get("tag_name") or "")
+        if not re.fullmatch(r"v?\d+(\.\d+){1,3}", tag):
+            return {"ok": False, "error": "La versión publicada no es válida"}
+        if _num(tag) <= _num(_version_local()):
+            pub = revisar_actualizacion(fresco=True)
+            if pub.get("hay_nueva"):
+                return {"ok": False, "error": "La versión %s ya está publicada, pero el .exe para Windows todavía se está compilando "
+                                              "en GitHub (tarda unos 10 minutos). Intenta de nuevo en un rato." % pub.get("ultima")}
+            return {"ok": True, "salida": "Ya tienes lo último publicado."}
+        asset = None
+        for a in rel.get("assets") or []:
+            if re.fullmatch(r"pcbox-portable-windows-x64[\w.\-]*\.exe", str(a.get("name") or "")):
+                asset = a
+                break
+        if not asset:
+            return {"ok": False, "error": "El release %s no trae el .exe de Windows" % tag}
+        url = str(asset.get("browser_download_url") or "")
+        if not url.startswith("https://github.com/%s/releases/download/" % repo):
+            return {"ok": False, "error": "Dirección de descarga no válida"}
+        dest = EXE_DIR / asset["name"]
+        part = EXE_DIR / (asset["name"] + ".part")
+        esperado = int(asset.get("size") or 0)
+        h = hashlib.sha256()
+        total = 0
+        try:
+            with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "pcbox-actualizador"}), timeout=60) as f, \
+                    open(part, "wb") as out:
+                while True:
+                    bloque = f.read(1 << 20)
+                    if not bloque:
+                        break
+                    total += len(bloque)
+                    if total > 400 * 1024 * 1024:
+                        raise ValueError("archivo demasiado grande")
+                    h.update(bloque)
+                    out.write(bloque)
+            with open(part, "rb") as fchk:
+                cabecera = fchk.read(2)
+            dig = str(asset.get("digest") or "")
+            if esperado and total != esperado:
+                raise ValueError("descarga incompleta (%d de %d bytes)" % (total, esperado))
+            if cabecera != b"MZ":
+                raise ValueError("el archivo descargado no es un programa de Windows")
+            if dig.startswith("sha256:") and dig[7:].lower() != h.hexdigest():
+                raise ValueError("la suma de verificación no coincide")
+            os.replace(part, dest)
+        except Exception as e:
+            try:
+                part.unlink()
+            except OSError:
+                pass
+            return {"ok": False, "error": "No se pudo descargar la actualización (%s)" % str(e)[:120]}
+        actual = Path(sys.executable).resolve()
+        for viejo in EXE_DIR.glob("pcbox-portable-windows-x64*.exe*"):      # quedan solo la versión en uso y la nueva
+            try:
+                if viejo.resolve() not in (actual, dest.resolve()):
+                    viejo.unlink()
+            except OSError:
+                pass
+        bat = EXE_DIR / "_abrir_nueva_version.bat"
+        bat.write_text('@echo off\r\nchcp 65001 >nul\r\nping -n 5 127.0.0.1 >nul\r\ncd /d "%s"\r\nstart "" "%s"\r\n(goto) 2>nul & del "%%~f0"\r\n'
+                       % (EXE_DIR, dest), encoding="utf-8")
+        subprocess.Popen(["cmd", "/c", str(bat)], cwd=str(EXE_DIR), close_fds=True, stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         creationflags=0x00000008 | 0x00000200 | 0x08000000)      # DETACHED | NEW_GROUP | NO_WINDOW
+        threading.Timer(2.0, os._exit, [0]).start()
+        _UPD["r"] = None
+        return {"ok": True, "reiniciar": True,
+                "salida": "Versión %s descargada (%s). El portable se reinicia en unos segundos y se abrirá una pestaña nueva; "
+                          "el .exe anterior queda como respaldo en la misma carpeta." % (tag, asset["name"])}
+    finally:
+        _EXE_BUSY.release()
+
+
 def aplicar_actualizacion():
     if FROZEN:
+        if os.name == "nt":
+            return _actualizar_exe()
         return {"ok": False, "error": "Esta versión empaquetada no se actualiza sola: descarga la nueva desde GitHub."}
     if (RES / ".git").is_dir():          # carpeta git: se actualiza con git pull --ff-only (lo hace actualizar.py --detalle)
         import json as _json
