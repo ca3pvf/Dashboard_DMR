@@ -53,6 +53,8 @@ _cache = {s: None for s in range(1, SLOTS + 1)}
 _last_req = {s: 0.0 for s in range(1, SLOTS + 1)}
 _wake = {s: threading.Event() for s in range(1, SLOTS + 1)}
 _bm = {s: (0.0, None, None) for s in range(1, SLOTS + 1)}   # (timestamp, dmr_id, info)
+_fallos = {}               # consultas fallidas seguidas por hotspot
+FALLOS_MAX = 3             # fallos seguidos antes de marcar el hotspot como caido
 
 RE_HOST = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9.\-]{0,251}[A-Za-z0-9])?$")
 RE_USER = re.compile(r"^[a-z_][a-z0-9_\-]{0,31}$")
@@ -241,6 +243,13 @@ def refrescar(slot, hs):
         },
     }
     with _lock:
+        previo = _cache[slot]
+        if reachable:
+            _fallos[slot] = 0
+        else:
+            _fallos[slot] = _fallos.get(slot, 0) + 1
+            if previo and previo["wpsd"]["reachable"] and _fallos[slot] < FALLOS_MAX:
+                return      # un fallo suelto no marca "caido": se conserva el ultimo dato bueno
         _cache[slot] = payload
 
 

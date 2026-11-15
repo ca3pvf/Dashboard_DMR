@@ -19,7 +19,7 @@ _FLAGS = 0x08000000 if _NT else 0          # CREATE_NO_WINDOW
 _CON_ARG = {"-o", "-p", "-i", "-l", "-F", "-J", "-b", "-c", "-e", "-m", "-E", "-B", "-I", "-Q"}
 _NO_SOPORTADAS = {"-L", "-R", "-D", "-W", "-O", "-S", "-w", "-N", "-t", "-tt", "-f", "-s", "-M", "-X", "-Y", "-A"}
 _OPT_DESCARTAR = ("controlmaster", "controlpath", "controlpersist", "batchmode", "serveraliveinterval",
-                  "serveralivecountmax", "connecttimeout")
+                  "serveralivecountmax", "connecttimeout", "stricthostkeychecking")
 _RE_DESTINO = re.compile(r"^[\w.\-]+@[\w.\-:]+$")
 _MAX_SESIONES = 2
 _lock = threading.Lock()

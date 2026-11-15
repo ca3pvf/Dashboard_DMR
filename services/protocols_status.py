@@ -65,14 +65,39 @@ CROSS_SERVICES = {
 CROSS_JOURNAL_LINES = 15  # cuántas líneas recientes de journal revisar por servicio
 
 
-def ssh_run(cmd: str) -> str:
-    """Ejecuta un comando en la Raspi vía SSH y devuelve stdout como texto."""
+def _ssh_directo(cmd: str, timeout: int = 10) -> str:
+    """Una conexion SSH, un comando; devuelve stdout como texto."""
     full_cmd = ["ssh"] + SSH_OPTS + [f"{SSH_USER}@{SSH_HOST}", cmd]
     try:
-        result = subprocess.run(full_cmd, capture_output=True, text=True, timeout=10)
+        result = subprocess.run(full_cmd, capture_output=True, text=True, timeout=timeout)
         return result.stdout
     except Exception:
         return ""
+
+
+_ctx = threading.local()          # por hilo: comandos precargados y comandos pedidos en el ciclo actual
+_TTL_CMDS = (("nc -u", 60.0),)    # comando lento y solo de referencia: se repite como maximo cada 60 s
+_ttl_cache = {}
+
+
+def ssh_run(cmd: str) -> str:
+    """Ejecuta un comando en la Raspi vía SSH y devuelve stdout como texto.
+    Dentro de un ciclo de Protocolos los comandos ya vienen precargados en una sola conexion."""
+    for clave, ttl in _TTL_CMDS:
+        if clave in cmd:
+            hit = _ttl_cache.get(cmd)
+            if hit and time.time() - hit[0] < ttl:
+                return hit[1]
+            out = _ssh_directo(cmd)
+            _ttl_cache[cmd] = (time.time(), out)
+            return out
+    rec = getattr(_ctx, "rec", None)
+    pre = getattr(_ctx, "pre", None)
+    if rec is not None:
+        rec.append(cmd)
+    if pre is not None and cmd in pre:
+        return pre[cmd]
+    return _ssh_directo(cmd)
 
 
 def get_service_states() -> dict:
@@ -430,9 +455,118 @@ _active_lock = threading.Lock()
 _active_wake = threading.Event()
 
 
+# ---- QSO activos en tiempo real: UNA conexion SSH abierta que sigue el log (tail -F),
+# en vez de leer el log de la Raspi cada segundo ----
+ACTIVE_QSO_STREAM_IDLE_SECONDS = 120    # sin consultas durante este tiempo, se cierra la conexion
+QSO_STREAM_SCRIPT = r"""
+t=""; c=""
+trap 'kill $t 2>/dev/null; exit 0' PIPE HUP TERM INT
+while :; do
+  f=""
+  for x in @@LOG@@/MMDVM-*.log; do [ -e "$x" ] && f="$x"; done
+  if [ -n "$f" ] && [ "$f" != "$c" ]; then
+    [ -n "$t" ] && kill $t 2>/dev/null
+    c="$f"; echo "@@FILE $f"
+    tail -n 500 -F "$f" 2>/dev/null &
+    t=$!
+  fi
+  sleep 5
+  echo "@@HB"
+done
+""".replace("@@LOG@@", LOG_DIR)
+_stream = {"thread": None, "proc": None, "pending": {}, "sync": 0.0, "last": 0.0}
+_stream_lock = threading.Lock()
+
+
+def _stream_sano():
+    with _stream_lock:
+        ahora = time.time()
+        return bool(_stream["sync"]) and ahora - _stream["sync"] > 2.0 and ahora - _stream["last"] < 20
+
+
+def _stream_activos():
+    with _stream_lock:
+        return [dict(v) for v in _stream["pending"].values()]
+
+
+def _stream_linea(linea):
+    # misma logica que parse_active_qsos(), pero linea por linea sobre el estado en memoria (con _stream_lock)
+    m_end = QSO_END_RE.match(linea)
+    if m_end:
+        _stream["pending"].pop((m_end.group("proto"), m_end.group("slot"), m_end.group("via")), None)
+        return
+    m = QSO_HEADER_RE.match(linea)
+    if m:
+        _stream["pending"][(m.group("proto"), m.group("slot"), m.group("via"))] = {
+            "protocolo": m.group("proto"), "slot": m.group("slot"), "via": m.group("via"),
+            "callsign": m.group("call"), "target": m.group("target").strip(), "inicio": m.group("ts"),
+        }
+
+
+def _stream_trabajo():
+    fallos = 0
+    while True:
+        with _active_lock:
+            ult = _active_cache["last_request"]
+        if time.time() - ult > ACTIVE_QSO_STREAM_IDLE_SECONDS:
+            break
+        t0 = time.time()
+        p = None
+        try:
+            cmd = ["ssh"] + SSH_OPTS + ["-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3",
+                                        f"{SSH_USER}@{SSH_HOST}", QSO_STREAM_SCRIPT]
+            p = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                 text=True, errors="replace", bufsize=1)
+            with _stream_lock:
+                _stream["proc"] = p
+            for linea in p.stdout:
+                linea = linea.rstrip("\r\n")
+                with _stream_lock:
+                    _stream["last"] = time.time()
+                    if linea.startswith("@@FILE"):
+                        _stream["pending"].clear()
+                        _stream["sync"] = time.time()
+                    elif not linea.startswith("@@HB"):
+                        _stream_linea(linea)
+                with _active_lock:
+                    ult = _active_cache["last_request"]
+                if time.time() - ult > ACTIVE_QSO_STREAM_IDLE_SECONDS:
+                    break
+        except Exception as e:
+            print(f"qso stream: {e}", flush=True)
+        finally:
+            with _stream_lock:
+                _stream["sync"] = 0.0
+                _stream["pending"].clear()
+                _stream["proc"] = None
+            if p is not None:
+                try:
+                    p.kill()
+                except Exception:
+                    pass
+        fallos = 0 if time.time() - t0 > 30 else min(fallos + 1, 5)
+        time.sleep(min(30, 2 ** fallos))
+    with _stream_lock:
+        _stream["thread"] = None
+
+
+def _stream_asegurar():
+    with _stream_lock:
+        t = _stream["thread"]
+        if t is not None and t.is_alive():
+            return
+        t = threading.Thread(target=_stream_trabajo, daemon=True)
+        _stream["thread"] = t
+    t.start()
+
+
 def _active_qso_compute():
-    log_text = tail_latest_mmdvm_log()
-    activos = filtrar_vigentes(parse_active_qsos(log_text))
+    _stream_asegurar()
+    if _stream_sano():
+        activos = filtrar_vigentes(_stream_activos())
+    else:
+        log_text = tail_latest_mmdvm_log()
+        activos = filtrar_vigentes(parse_active_qsos(log_text))
     data = {
         "activos": activos,
         "updated_at": datetime.now().isoformat(timespec="seconds"),
@@ -544,8 +678,41 @@ _protocols_lock = threading.Lock()
 _protocols_wake = threading.Event()
 
 
+_SEQ = []                  # comandos que pidio el ultimo ciclo completo (para precargarlos juntos)
+
+
+def _prefetch(seq):
+    """Ejecuta TODOS los comandos de seq en una sola conexion SSH y devuelve {comando: salida}."""
+    partes = []
+    for i, c in enumerate(seq):
+        partes.append("printf '@@B%d@@\\n'\n(\n%s\n) 2>/dev/null\necho" % (i, c))
+    raw = _ssh_directo("\n".join(partes), timeout=40)
+    out = {c: "" for c in seq}
+    trozos = re.split(r"@@B(\d+)@@\n", raw)
+    for k in range(1, len(trozos) - 1, 2):
+        i = int(trozos[k])
+        if i < len(seq):
+            t = trozos[k + 1]
+            out[seq[i]] = t[:-1] if t.endswith("\n") else t
+    return out
+
+
+def _build_protocols_batch():
+    """build_protocols() pedia ~9 conexiones SSH por ciclo: la primera vez aprende cuales son y desde
+    entonces las ejecuta todas juntas en una sola conexion."""
+    _ctx.rec = []
+    _ctx.pre = _prefetch(list(_SEQ)) if _SEQ else None
+    try:
+        data = build_protocols()
+        _SEQ[:] = _ctx.rec
+        return data
+    finally:
+        _ctx.rec = None
+        _ctx.pre = None
+
+
 def _protocols_compute():
-    data = build_protocols()
+    data = _build_protocols_batch()
     with _protocols_lock:
         _protocols_cache["data"] = data
         _protocols_cache["ts"] = time.time()
