@@ -939,6 +939,7 @@ return {list:list,render:render,mount:mount,flag:flag}
       <section class="card" id="hsnx" style="--accent:#4d7cff">
         <div class="card-head">
           <span class="card-title">PANTALLA HOTSPOT</span>
+          <button type="button" class="nx-opt-btn" id="nx-opt-btn" title="Cambiar skin de la pantalla">⚙ Opciones</button>
           <span class="card-meta" id="nx-estado">--</span>
         </div>
         <div class="card-body nx">
@@ -5660,6 +5661,52 @@ function hsnxCfgPrev(){
   HSSkins.render(hsnxSkin, e2, Object.assign({}, base, {mode: 'active', call: 'CE1ABC', name: 'Colega (demo)', country: 'Chile',
     proto: 'DMR', tg: '730', tgName: 'Chile', secs: 12, rssi: -80, ber: '0.3'}));
 }
+/* HSOPC-INICIO: botón Opciones en Pantalla Hotspot (cambio rápido de skin) */
+(function(){
+  var st = document.createElement('style');
+  st.textContent = '.nx-opt-btn{margin-left:auto;margin-right:8px;background:transparent;color:inherit;border:1px solid var(--accent,#4d7cff);border-radius:4px;padding:1px 8px;font-size:11px;cursor:pointer;font-family:inherit}'
+    + '.nx-opt-btn:hover{background:var(--accent,#4d7cff);color:#fff}'
+    + '#nx-opt-pan{position:fixed;z-index:99999;min-width:230px;max-width:90vw;padding:10px 12px;border:1px solid var(--accent,#4d7cff);border-radius:6px;box-shadow:0 6px 20px rgba(0,0,0,.45);font-size:13px}'
+    + '#nx-opt-pan .nx-opt-tit{font-weight:bold;margin-bottom:6px}';
+  document.head.appendChild(st);
+  var btn = document.getElementById('nx-opt-btn'), pan = null;
+  if(!btn) return;
+  function cerrar(){ if(pan){ pan.remove(); pan = null; } }
+  ['mousedown','pointerdown','touchstart','dblclick'].forEach(function(t){
+    btn.addEventListener(t, function(e){ e.stopPropagation(); });
+  });
+  btn.addEventListener('click', function(e){
+    e.stopPropagation();
+    if(pan){ cerrar(); return; }
+    if(!window.HSSkins) return;
+    var card = document.getElementById('hsnx'), cs = getComputedStyle(card);
+    var bg = cs.backgroundColor;
+    if(!bg || bg === 'rgba(0, 0, 0, 0)' || bg === 'transparent') bg = getComputedStyle(document.body).backgroundColor;
+    var L = [{id: 'hs3awo', name: 'Actual (HS3AWO)', src: 'diseño original de pcbox'}].concat(HSSkins.list);
+    pan = document.createElement('div');
+    pan.id = 'nx-opt-pan';
+    pan.style.background = bg;
+    pan.style.color = cs.color;
+    pan.innerHTML = '<div class="nx-opt-tit">Skin de la pantalla</div>' + L.map(function(x){
+      return '<label style="display:block;margin:4px 0;cursor:pointer"><input type="radio" name="nx-opt-skin" value="' + x.id + '"' +
+        (x.id === hsnxSkin ? ' checked' : '') + '> ' + x.name + '</label>';
+    }).join('');
+    pan.onchange = function(ev){
+      var v = ev.target.value; if(!v) return;
+      hsnxSkin = v; localStorage.setItem('pcbox-hs-skin', v);
+      hsnxCfgPrev(); hsnxPintar();
+      var l = document.getElementById('nx-cfg-lista');
+      if(l){ var r = l.querySelector('input[value="' + v + '"]'); if(r) r.checked = true; }
+    };
+    document.body.appendChild(pan);
+    var r = btn.getBoundingClientRect(), w = pan.offsetWidth;
+    pan.style.top = (r.bottom + 4) + 'px';
+    pan.style.left = Math.max(4, Math.min(r.left, window.innerWidth - w - 4)) + 'px';
+  });
+  document.addEventListener('click', function(e){ if(pan && !pan.contains(e.target)) cerrar(); });
+  document.addEventListener('keydown', function(e){ if(e.key === 'Escape') cerrar(); });
+})();
+/* HSOPC-FIN */
 function hsnxCfgInit(){
   const p = document.getElementById('nx-cfg-lista');
   if(!p || !window.HSSkins) return;
