@@ -3249,7 +3249,7 @@ function aprsPintarEst(){
   });
   aprsFlechas();
   document.getElementById('aprs-est-body').innerHTML = lista.length ? lista.map(e =>
-    '<tr><td class="lh-call"><a href="' + aprsUrlMapa(e) + '" target="_blank" rel="noopener noreferrer" title="Ver ubicación en el mapa" style="color:inherit;text-decoration:underline dotted">' + aprsEsc(e.call) + '</a></td><td>' + e.dist_km + ' km</td><td>' +
+    '<tr><td class="lh-call"><a href="' + aprsUrlMapa(e) + '" class="aprs-ver" data-call="' + aprsEsc(e.call) + '" data-lat="' + e.lat + '" data-lon="' + e.lon + '" data-dist="' + e.dist_km + '" title="Ver la ubicación en un recuadro (Cmd/Ctrl + clic: pestaña nueva)" style="color:inherit;text-decoration:underline dotted">' + aprsEsc(e.call) + '</a></td><td>' + e.dist_km + ' km</td><td>' +
     aprsHace(e.hace_s) + '</td><td>' + aprsEsc(e.comentario) + '</td></tr>').join('')
     : '<tr><td colspan="4" class="lh-empty">' + (aprsBusq ? 'Sin estaciones con ese indicativo (dentro del radio y de las últimas horas)' : 'Sin estaciones escuchadas todavía') + '</td></tr>';
 }
@@ -7352,5 +7352,49 @@ function hsnxFecha(){
   });
 })();
 </script><!-- SISMAPA-JS-FIN -->
+<!-- APRSRECUADRO-INICIO -->
+<script>
+/* APRS: ubicación de la estación en un recuadro (como Satélites y Sismos), no en una pestaña nueva. */
+(function(){
+  var box = null;
+  function armar(){
+    box = document.createElement('div');
+    box.id = 'aprs-modal';
+    box.style.cssText = 'display:none;position:fixed;inset:0;z-index:99990;background:rgba(0,0,0,.65);align-items:center;justify-content:center';
+    box.innerHTML = '<div style="position:relative;width:min(94vw,900px);height:min(86vh,640px);background:#101418;border:2px solid #4d7cff;border-radius:10px;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,.6)">' +
+      '<div style="position:absolute;left:10px;top:8px;z-index:2;color:#fff;font:13px system-ui;background:rgba(0,0,0,.55);padding:3px 8px;border-radius:4px" id="aprs-ttl"></div>' +
+      '<div style="position:absolute;right:8px;top:6px;z-index:2;display:flex;gap:8px;align-items:center">' +
+      '<a id="aprs-tab" target="_blank" rel="noopener" title="Abrir en una pestaña nueva" style="color:#fff;font:13px system-ui;background:rgba(0,0,0,.55);padding:3px 8px;border-radius:4px;text-decoration:none;cursor:pointer">↗ pestaña</a>' +
+      '<button type="button" id="aprs-x" title="Cerrar (Esc)" style="background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.4);color:#fff;border-radius:4px;cursor:pointer;padding:2px 9px;font-size:15px">✕</button></div>' +
+      '<iframe id="aprs-if" style="width:100%;height:100%;border:0"></iframe></div>';
+    document.body.appendChild(box);
+    box.addEventListener('click', function(e){ if(e.target === box || e.target.id === 'aprs-x') cerrar(); });
+  }
+  function cerrar(){ if(!box) return; box.style.display = 'none'; box.querySelector('#aprs-if').src = 'about:blank'; }
+  function embebido(lat, lon){
+    if(aprsMapa === 'google') return 'https://maps.google.com/maps?q=' + lat + ',' + lon + '&z=14&output=embed';
+    var dx = 0.02, dy = 0.012;
+    return 'https://www.openstreetmap.org/export/embed.html?bbox=' +
+      [lon - dx, lat - dy, lon + dx, lat + dy].map(function(n){ return n.toFixed(5); }).join('%2C') + '&layer=mapnik&marker=' + lat + '%2C' + lon;
+  }
+  document.addEventListener('keydown', function(e){
+    if(e.key === 'Escape' && box && box.style.display !== 'none'){ cerrar(); e.stopImmediatePropagation(); }
+  }, true);
+  document.addEventListener('click', function(ev){
+    var a = ev.target.closest && ev.target.closest('a.aprs-ver');
+    if(!a) return;
+    if(ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.button) return;
+    var lat = parseFloat(a.dataset.lat), lon = parseFloat(a.dataset.lon);
+    if(!isFinite(lat) || !isFinite(lon)) return;
+    ev.preventDefault();
+    if(!box) armar();
+    box.querySelector('#aprs-if').src = embebido(lat, lon);
+    box.querySelector('#aprs-tab').href = a.href;
+    box.querySelector('#aprs-ttl').textContent = (a.dataset.call || '') + (a.dataset.dist ? ' · ' + a.dataset.dist + ' km' : '');
+    box.style.display = 'flex';
+  });
+})();
+</script>
+<!-- APRSRECUADRO-FIN -->
 </body>
 </html>
