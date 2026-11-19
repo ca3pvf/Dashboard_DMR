@@ -59,8 +59,11 @@ jobs:
           pattern: pcbox-*
           merge-multiple: true
           path: dist
+      - name: Notas de la versión
+        run: git log -1 --format=%B "$GITHUB_SHA" > NOTAS.txt
       - uses: softprops/action-gh-release@v2
         with:
+          body_path: NOTAS.txt
           files: |
             dist/*
             configurar_ssh.sh

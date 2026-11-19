@@ -1467,15 +1467,20 @@ return {list:list,render:render,mount:mount,flag:flag}
               <div class="cfg-box" style="grid-column:1 / -1;">
                 <div class="cfg-box-title">Actualizaciones</div>
                 <div id="upd-estado" style="line-height:1.7">Comprobando…</div>
+                <label style="display:flex;gap:8px;align-items:center;margin-top:10px;cursor:pointer">
+                  <input type="checkbox" id="upd-auto" checked> Actualizar automáticamente (recomendado)
+                </label>
                 <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
                   <button type="button" class="qsl-btn" id="upd-buscar">Buscar ahora</button>
                   <button type="button" class="qsl-btn" id="upd-aplicar" style="display:none">Actualizar ahora</button>
                 </div>
                 <div id="upd-msg" class="qsl-hint" style="margin-top:8px"></div>
-                <p class="qsl-hint" style="margin-top:10px">Se revisa solo cada 6 horas. Actualizar no toca tu configuración ni tus datos; para usar la versión nueva, cierra el dashboard y ábrelo otra vez.</p>
+                <p class="qsl-hint" style="margin-top:10px">Se revisa solo cada 6 horas. Con la casilla activada, cuando se publica una versión nueva se descarga, se verifica y el dashboard se reinicia solo (la pestaña abierta se recarga sola). Si la versión nueva no arranca, se vuelve a la anterior. Tu configuración y tus datos no se tocan.</p>
               </div>
             </div>
           </div>
+
+
 
           <div class="cfg-panel" id="cfg-panel-grabador">
             <div class="cfg-box"><div class="cfg-box-title">Grabador de QSO</div>
@@ -4241,7 +4246,7 @@ setCfgTab(localStorage.getItem('pcbox-config-tab') || 'sistema');
   const API = 'http://' + location.hostname + ':5009/api/portable/';
   const $ = id => document.getElementById(id);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-  let R = null;
+  let R = null, boot0 = null, esperando = false;
   function punto(on){
     const b = document.querySelector('.nav button[data-view="config"]'); if(!b) return;
     let p = document.getElementById('upd-punto');
@@ -4252,20 +4257,27 @@ setCfgTab(localStorage.getItem('pcbox-config-tab') || 'sistema');
     }else if(!on && p){ p.remove(); }
   }
   function pintar(){
-    const e = $('upd-estado'), ap = $('upd-aplicar'); if(!e) return;
+    const e = $('upd-estado'), ap = $('upd-aplicar'), au = $('upd-auto'); if(!e) return;
     ap.style.display = 'none';
     if(!R){ e.textContent = 'Comprobando…'; return; }
     if(R.no_portable){ e.textContent = 'Esta función solo está disponible en la versión portable (la que se descarga de GitHub).'; punto(false); return; }
+    if(au && typeof R.auto === 'boolean') au.checked = R.auto;
     let h = 'Versión instalada: <b>' + esc(R.version) + '</b>';
     if(R.ultima) h += ' · Última publicada: <b>' + esc(R.ultima) + '</b>';
-    if(R.error) h += '<br><span style="color:var(--amber)">' + esc(R.error) + '</span>';
-    else if(R.hay_nueva){
-      h += '<br><span style="color:var(--green)">Hay una versión nueva disponible.</span>';
-      if(R.congelado) h += ' Descárgala desde GitHub.';
-      else{ ap.style.display = ''; if(R.es_git) h += ' Esta carpeta es un repositorio git: se actualizará con «git pull».'; }
-    }else h += '<br>Estás al día.';
+    if(R.bloqueado){
+      h += '<br><span style="color:var(--amber)">Las actualizaciones están desactivadas en esta carpeta (modo desarrollo).</span>';
+      if(au) au.disabled = true;
+    }else{
+      if(au) au.disabled = false;
+      if(R.error) h += '<br><span style="color:var(--amber)">' + esc(R.error) + '</span>';
+      else if(R.hay_nueva){
+        h += '<br><span style="color:var(--green)">Hay una versión nueva disponible.</span>';
+        if(R.es_git) h += ' Esta carpeta es un repositorio git: se actualiza con «git merge» al tag publicado.';
+        ap.style.display = '';
+      }else h += '<br>Estás al día.';
+    }
     e.innerHTML = h;
-    punto(!!(R.hay_nueva && !R.error));
+    punto(!!(R.hay_nueva && !R.error && !R.bloqueado));
   }
   async function revisar(fresco){
     try{
@@ -4275,19 +4287,71 @@ setCfgTab(localStorage.getItem('pcbox-config-tab') || 'sistema');
     }catch(e){ R = {no_portable: true}; }
     pintar();
   }
-  const b1 = $('upd-buscar'), b2 = $('upd-aplicar');
+  async function bootId(){
+    try{ const j = await (await fetch(API + 'boot', {cache: 'no-store'})).json(); return j.id; }catch(e){ return null; }
+  }
+  /* si el programa se reinicia (actualización), la página se recarga sola cuando vuelve */
+  async function vigilar(){
+    if(document.hidden) return;
+    const id = await bootId();
+    if(id == null) return;
+    if(boot0 == null) boot0 = id;
+    else if(id !== boot0) location.reload();
+  }
+  async function esperarReinicio(){
+    if(esperando) return; esperando = true;
+    const msg = $('upd-msg');
+    for(let i = 0; i < 90; i++){
+      await new Promise(r => setTimeout(r, 2000));
+      const id = await bootId();
+      if(id != null && boot0 != null && id !== boot0){ location.reload(); return; }
+    }
+    esperando = false;
+    if(msg) msg.textContent = 'El programa no volvió a abrirse solo. Ábrelo de nuevo manualmente.';
+  }
+  const b1 = $('upd-buscar'), b2 = $('upd-aplicar'), au = $('upd-auto');
   if(b1) b1.addEventListener('click', async () => { $('upd-msg').textContent = 'Buscando…'; await revisar(true); $('upd-msg').textContent = ''; });
+  if(au) au.addEventListener('change', async () => {
+    try{
+      await fetch(API + 'update-config', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({auto: au.checked})});
+      $('upd-msg').textContent = au.checked ? 'Actualización automática activada.' : 'Actualización automática desactivada: tú decides cuándo actualizar.';
+    }catch(e){ $('upd-msg').textContent = 'No se pudo guardar el ajuste.'; }
+  });
   if(b2) b2.addEventListener('click', async () => {
-    if(!confirm('Se descargará la última versión desde GitHub. Tu configuración y tus datos no se tocan. ¿Continuar?')) return;
-    b2.disabled = true; $('upd-msg').textContent = 'Actualizando…';
+    if(!confirm('Se descargará la última versión desde GitHub y el dashboard se reiniciará solo. Tu configuración y tus datos no se tocan. ¿Continuar?')) return;
+    b2.disabled = true; $('upd-msg').textContent = 'Descargando y verificando… (puede tardar un par de minutos)';
     try{
       const r = await (await fetch(API + 'update-apply', {method: 'POST'})).json();
-      $('upd-msg').textContent = r.ok ? ((r.salida || 'Listo.') + ' Cierra el dashboard y ábrelo de nuevo para usar la versión nueva.') : (r.error || r.salida || 'No se pudo actualizar.');
-    }catch(e){ $('upd-msg').textContent = 'No se pudo actualizar.'; }
+      if(r.ok && r.reiniciar){ $('upd-msg').textContent = (r.salida || 'Listo.') + ' Esperando que vuelva a abrirse…'; esperarReinicio(); }
+      else $('upd-msg').textContent = r.ok ? (r.salida || 'Listo.') : (r.error || r.salida || 'No se pudo actualizar.');
+    }catch(e){ $('upd-msg').textContent = 'Se perdió la conexión: si el programa se está reiniciando, esta página se recargará sola.'; esperarReinicio(); }
     b2.disabled = false;
   });
+  /* pantalla de novedades: se muestra una vez, cuando ya corre la versión nueva */
+  async function novedades(){
+    let n = null;
+    try{ n = await (await fetch(API + 'update-notes')).json(); }catch(e){ return; }
+    if(!n || !n.hasta) return;
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;padding:16px';
+    const notas = String(n.notas || '').trim();
+    ov.innerHTML = '<div style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:10px;max-width:560px;width:100%;max-height:85vh;overflow:auto;padding:22px;box-shadow:0 10px 40px rgba(0,0,0,.6)">' +
+      '<div style="font-size:18px;font-weight:700;margin-bottom:4px">Actualizado a la versión ' + esc(n.hasta) + '</div>' +
+      '<div style="color:var(--text-dim);font-size:13px;margin-bottom:12px">' + (n.desde ? 'Antes: ' + esc(n.desde) + ' · ' : '') + esc(n.fecha || '') + '</div>' +
+      '<div style="color:var(--green);margin-bottom:10px">Todo quedó funcionando. Tu configuración y tus datos no se tocaron.</div>' +
+      (notas ? '<div style="font-weight:600;margin-bottom:6px">Novedades</div><div style="white-space:pre-wrap;line-height:1.5;font-size:14px">' + esc(notas) + '</div>' : '') +
+      '<div style="text-align:right;margin-top:16px"><button type="button" class="qsl-btn" id="upd-nov-ok">Entendido</button></div></div>';
+    document.body.appendChild(ov);
+    $('upd-nov-ok').addEventListener('click', async () => {
+      try{ await fetch(API + 'update-notes-ok', {method: 'POST'}); }catch(e){}
+      ov.remove();
+    });
+  }
   setTimeout(() => { if(!document.hidden) revisar(false); }, 8000);
   setInterval(() => { if(!document.hidden) revisar(false); }, 6 * 3600 * 1000);
+  setInterval(vigilar, 15000);
+  setTimeout(novedades, 3000);
+  vigilar();
   revisar(false);
 })();
 
