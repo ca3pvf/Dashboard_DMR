@@ -229,7 +229,8 @@ if(q.get('lugar')) fila('Lugar:',q.get('lugar'));
 if(q.get('hora')) fila('Hora:',q.get('hora'));
 if(q.get('prof')) fila('Profundidad:',q.get('prof')+' km');
 if(q.get('fuente')) fila('Fuente:',q.get('fuente'));
-var map=L.map('map',{worldCopyJump:true});
+var map=L.map('map',{worldCopyJump:true,zoomControl:false});
+L.control.zoom({position:'bottomright'}).addTo(map);
 L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,attribution:'&copy; OpenStreetMap'}).addTo(map);
 if(isNaN(lat)||isNaN(lon)){
   fila('','Este sismo no trae coordenadas.'); map.setView([-30,-70],4);

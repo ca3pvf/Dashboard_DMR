@@ -275,7 +275,8 @@ function trozos(pts, ok){
   return out;
 }
 function dibujar(d){
-  const mapa = L.map('mapa', {worldCopyJump: true}).setView([d.obs.lat, d.obs.lon], 3);
+  const mapa = L.map('mapa', {worldCopyJump: true, zoomControl: false}).setView([d.obs.lat, d.obs.lon], 3);
+  L.control.zoom({position: 'bottomright'}).addTo(mapa);
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 12, attribution: '&copy; OpenStreetMap'}).addTo(mapa);
   const P = d.puntos, dentro = p => p[0] >= d.aos && p[0] <= d.los;
   trozos(P, () => true).forEach(s => L.polyline(s, {color: '#7aa2ff', weight: 2, dashArray: '6 6', opacity: .8}).addTo(mapa));

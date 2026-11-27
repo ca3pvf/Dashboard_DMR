@@ -7306,6 +7306,104 @@ function hsnxFecha(){
     document.body.appendChild(a); a.click(); a.remove();
   }
 
+  /* REPPAIS-INICIO */
+  (function(){
+    var ESPEC = [
+      ['CA-CE,XQ,XR,3G','Chile','cl'], ['LO-LW,AY,AZ,L2-L9','Argentina','ar'], ['OA-OC,4T','Perú','pe'],
+      ['HJ,HK,5J,5K','Colombia','co'], ['XA-XI,4A-4C,6D-6J','México','mx'], ['EA-EH,AM-AO','España','es'],
+      ['PP-PY,ZV-ZZ','Brasil','br'], ['YB-YH,JZ,PK-PO,7A-7I,8A-8I','Indonesia','id'], ['9M,9W','Malasia','my'],
+      ['CL-CM,CO,T4','Cuba','cu'], ['K,N,W,AA-AL','Estados Unidos','us'], ['KP3,KP4,NP3,NP4,WP3,WP4','Puerto Rico','pr'],
+      ['DA-DR','Alemania','de'], ['HC,HD','Ecuador','ec'], ['HQ,HR','Honduras','hn'], ['YV-YY,4M','Venezuela','ve'],
+      ['VU,AT-AW,8T-8Y','India','in'], ['CQ-CT','Portugal','pt'], ['CV-CX','Uruguay','uy'], ['DU-DZ,4D-4I','Filipinas','ph'],
+      ['TE,TI','Costa Rica','cr'], ['TA-TC,YM','Turquía','tr'], ['SN-SR,HF,3Z','Polonia','pl'], ['CP','Bolivia','bo'],
+      ['ZP','Paraguay','py'], ['HO,HP,H3,H8,H9','Panamá','pa'], ['TG,TD','Guatemala','gt'], ['YS,HU','El Salvador','sv'],
+      ['YN,HT','Nicaragua','ni'], ['HI','República Dominicana','do'], ['VA-VG,VO,VY,CF-CK,XJ-XO','Canadá','ca'],
+      ['F','Francia','fr'], ['I','Italia','it'], ['G,M','Reino Unido','gb'], ['JA-JS,7J-7N,8J-8N','Japón','jp'],
+      ['VK','Australia','au'], ['R,UA-UI','Rusia','ru'], ['UR-UZ,EM-EO','Ucrania','ua'], ['B','China','cn'],
+      ['HL,DS,DT,6K-6N','Corea del Sur','kr'], ['PA-PI','Países Bajos','nl'], ['ON-OT','Bélgica','be'], ['HB','Suiza','ch'],
+      ['OE','Austria','at'], ['SA-SM','Suecia','se'], ['LA-LN','Noruega','no'], ['OU-OZ','Dinamarca','dk'],
+      ['OF-OJ','Finlandia','fi'], ['SV-SZ','Grecia','gr'], ['EI,EJ','Irlanda','ie'], ['ZR-ZU','Sudáfrica','za'],
+      ['ZL,ZM','Nueva Zelanda','nz']
+    ];
+    var MAPA = {};
+    ESPEC.forEach(function(e){ e[0].split(',').forEach(function(t){
+      if(t.indexOf('-') < 0){ MAPA[t] = e; return; }
+      var a = t.split('-'), s = a[0], z = a[1].charAt(a[1].length - 1);
+      for(var c = s.charCodeAt(s.length - 1); c <= z.charCodeAt(0); c++) MAPA[s.slice(0, -1) + String.fromCharCode(c)] = e;
+    }); });
+    function paisDe(call){
+      var c = String(call || '').toUpperCase().split('-')[0];
+      if(c.indexOf('/') >= 0) c = c.split('/').sort(function(x, y){ return y.length - x.length; })[0];
+      for(var n = Math.min(3, c.length); n >= 1; n--){ var e = MAPA[c.slice(0, n)]; if(e) return e; }
+      return null;
+    }
+    function datos(){
+      var g = {};
+      D.participantes.filter(pasa).forEach(function(p){
+        var e = paisDe(p.call), k = e ? e[1] : (p.pais || 'Sin dato');
+        var o = g[k] || (g[k] = {pais: k, iso: e ? e[2] : '', calls: []});
+        o.calls.push(p.call);
+      });
+      var filas = Object.keys(g).map(function(k){ g[k].calls.sort(); return g[k]; });
+      filas.sort(function(a, b){ return b.calls.length - a.calls.length || a.pais.localeCompare(b.pais, 'es'); });
+      return {cols: D.columnas || [], filas: filas, total: filas.reduce(function(s, f){ return s + f.calls.length; }, 0)};
+    }
+    function html(d){
+      var tit = d.cols.length ? d.cols.map(function(c){ return esc(String(c.nombre).toUpperCase()); }).join(' · ') : 'ACTIVIDAD APRS';
+      var filas = d.filas.map(function(f){
+        return '<tr><td class="rp-p">' + (f.iso ? '<img src="https://flagcdn.com/w40/' + f.iso + '.png" alt="" onerror="this.style.visibility=\'hidden\'"> ' : '') + esc(f.pais) +
+          '</td><td class="rp-n">' + f.calls.length + '</td><td class="rp-c">' + f.calls.map(esc).join(', ') + '</td></tr>';
+      }).join('');
+      return '<div class="rp-t1">' + tit + '</div><div class="rp-t2">RADIOAFICIONADOS PARTICIPANTES POR PAÍS (ordenados de mayor a menor)</div>' +
+        '<div class="rp-t3">Reporte generado el ' + new Date().toLocaleDateString('es-CL') + '</div>' +
+        '<div class="rp-kpi"><div><span>PAÍSES PARTICIPANTES</span><b>' + d.filas.length + '</b></div><div><span>TOTAL RADIOAFICIONADOS</span><b>' + d.total + '</b></div></div>' +
+        '<table class="rp-tab"><thead><tr><th>PAÍS</th><th>TOTAL</th><th>LISTA DE RADIOAFICIONADOS (callsign)</th></tr></thead><tbody>' +
+        (filas || '<tr><td colspan="3">Sin participantes.</td></tr>') + '</tbody><tfoot><tr><td>TOTAL GENERAL</td><td class="rp-n">' + d.total +
+        '</td><td>' + d.total + ' radioaficionados únicos registrados en ' + d.filas.length + ' países</td></tr></tfoot></table>';
+    }
+    var css = document.createElement('style');
+    css.textContent = '#rp-modal{display:none;position:fixed;inset:0;z-index:99990;background:rgba(0,0,0,.65);align-items:center;justify-content:center}' +
+      '#rp-caja{background:#e6e6e8;color:#0b1d4d;width:min(96vw,1250px);max-height:92vh;overflow:auto;border-radius:10px;border:2px solid #4d7cff;font-family:system-ui,sans-serif}' +
+      '#rp-bar{position:sticky;top:0;display:flex;gap:8px;justify-content:flex-end;padding:8px;background:#e6e6e8;z-index:2}' +
+      '#rp-bar button{background:#0b2a63;color:#fff;border:0;border-radius:5px;padding:6px 14px;font-size:14px;cursor:pointer}' +
+      '#rp-doc{padding:6px 22px 18px;-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
+      '.rp-t1{text-align:center;font-weight:800;font-size:26px;letter-spacing:.5px}.rp-t2{text-align:center;font-weight:700;font-size:16px;margin-top:4px}' +
+      '.rp-t3{text-align:center;font-size:13px;opacity:.7;margin:2px 0 10px}' +
+      '.rp-kpi{display:flex;border:2px solid #0b2a63;margin-bottom:10px}.rp-kpi div{flex:1;text-align:center;padding:4px}' +
+      '.rp-kpi div+div{border-left:1px solid #0b2a63}.rp-kpi span{display:block;font-weight:700;font-size:14px}.rp-kpi b{font-size:30px;color:#e07b5a}' +
+      '.rp-tab{width:100%;border-collapse:collapse;font-size:13px;border:2px solid #0b2a63}' +
+      '.rp-tab th{background:#0b2a63;color:#fff;text-align:left;padding:6px 8px}.rp-tab td{padding:4px 8px;border-bottom:1px solid #c9c9cc;vertical-align:middle}' +
+      '.rp-tab td.rp-p{font-weight:700;white-space:nowrap;width:210px}.rp-tab td.rp-p img{width:26px;height:auto;vertical-align:middle;margin-right:6px;border:1px solid #bbb}' +
+      '.rp-tab td.rp-n,.rp-tab th:nth-child(2){text-align:center;width:70px;font-weight:700}.rp-tab td.rp-c{color:#444}' +
+      '.rp-tab tfoot td{font-weight:800;border-top:2px solid #0b2a63;background:#dcdce0}.rp-tab tr{page-break-inside:avoid}';
+    document.head.appendChild(css);
+    function cerrar(){ var m = document.getElementById('rp-modal'); if(m) m.style.display = 'none'; }
+    function pdf(){
+      var s = document.createElement('style'); s.id = 'rp-print';
+      s.textContent = '@page{size:A4 landscape;margin:8mm}@media print{body>*:not(#rp-modal){display:none!important}' +
+        '#rp-modal{position:static!important;background:#fff!important;display:block!important}' +
+        '#rp-caja{width:auto!important;max-height:none!important;overflow:visible!important;border:0!important}#rp-bar{display:none!important}}';
+      document.head.appendChild(s);
+      var t0 = document.title; document.title = 'Estadisticas-por-pais-' + new Date().toISOString().slice(0, 10);
+      var fin = function(){ var x = document.getElementById('rp-print'); if(x) x.remove(); document.title = t0; window.removeEventListener('afterprint', fin); };
+      window.addEventListener('afterprint', fin);
+      setTimeout(function(){ window.print(); }, 200);
+    }
+    function abrir(){
+      if(!D){ el('bst-msg').textContent = 'Primero carga las estadísticas (Actualizar).'; return; }
+      var m = document.getElementById('rp-modal');
+      if(!m){
+        m = document.createElement('div'); m.id = 'rp-modal'; document.body.appendChild(m);
+        m.addEventListener('click', function(e){ if(e.target === m || e.target.id === 'rp-x') cerrar(); else if(e.target.id === 'rp-pdf') pdf(); });
+        document.addEventListener('keydown', function(e){ if(e.key === 'Escape' && m.style.display !== 'none'){ cerrar(); e.stopImmediatePropagation(); } }, true);
+      }
+      m.innerHTML = '<div id="rp-caja"><div id="rp-bar"><button type="button" id="rp-pdf">📄 PDF</button><button type="button" id="rp-x">✕ Cerrar</button></div><div id="rp-doc">' + html(datos()) + '</div></div>';
+      m.style.display = 'flex';
+    }
+    el('bst-csv').insertAdjacentHTML('afterend', ' <button type="button" class="qsl-btn" id="bst-rep">Reporte por país</button>');
+    el('bst-rep').addEventListener('click', abrir);
+  })();
+  /* REPPAIS-FIN */
   el('bst-act').addEventListener('click', () => cargar(false));
   el('bst-csv').addEventListener('click', csv);
   el('bst-q').addEventListener('input', () => { pintar(); });
@@ -7434,7 +7532,18 @@ function hsnxFecha(){
     document.body.appendChild(box);
     box.addEventListener('click', function(e){ if(e.target === box || e.target.id === 'aprs-x') cerrar(); });
   }
-  function cerrar(){ if(!box) return; box.style.display = 'none'; box.querySelector('#aprs-if').src = 'about:blank'; }
+  function cerrar(){ if(!box) return; box.style.display = 'none'; box.querySelector('#aprs-if').removeAttribute('srcdoc'); box.querySelector('#aprs-if').src = 'about:blank'; }
+  function leafletDoc(lat, lon, call){
+    return '<!DOCTYPE html><html><head><meta charset="utf-8"><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">' +
+      '<style>html,body,#m{height:100%;margin:0}</style></head><body><div id="m"></div>' +
+      '<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><' + '/script><script>' +
+      'var m=L.map("m",{zoomControl:false}).setView([' + lat + ',' + lon + '],14);' +
+      'L.control.zoom({position:"bottomright"}).addTo(m);' +
+      'L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"&copy; OpenStreetMap"}).addTo(m);' +
+      'L.marker([' + lat + ',' + lon + '])' + (call ? '.addTo(m).bindTooltip(' + JSON.stringify(call).replace(/</g, '\\u003c') + ',{permanent:true,direction:"top"})' : '.addTo(m)') + ';' +
+      '<' + '/script></body></html>';
+  }
+  /* APRSZOOM */
   function embebido(lat, lon){
     if(aprsMapa === 'google') return 'https://maps.google.com/maps?q=' + lat + ',' + lon + '&z=14&output=embed';
     var dx = 0.02, dy = 0.012;
@@ -7452,7 +7561,9 @@ function hsnxFecha(){
     if(!isFinite(lat) || !isFinite(lon)) return;
     ev.preventDefault();
     if(!box) armar();
-    box.querySelector('#aprs-if').src = embebido(lat, lon);
+    var fr = box.querySelector('#aprs-if');
+    if(aprsMapa === 'google'){ fr.removeAttribute('srcdoc'); fr.src = embebido(lat, lon); }
+    else fr.srcdoc = leafletDoc(lat, lon, a.dataset.call || '');
     box.querySelector('#aprs-tab').href = a.href;
     box.querySelector('#aprs-ttl').textContent = (a.dataset.call || '') + (a.dataset.dist ? ' · ' + a.dataset.dist + ' km' : '');
     box.style.display = 'flex';

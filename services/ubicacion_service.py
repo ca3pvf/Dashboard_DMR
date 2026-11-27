@@ -333,7 +333,8 @@ var call=(q.get('call')||'').toUpperCase();
 var lat=parseFloat(q.get('lat')), lon=parseFloat(q.get('lon'));
 var home=!isNaN(lat)&&!isNaN(lon);
 var info=document.getElementById('info');
-var map=L.map('map',{worldCopyJump:true}).setView(home?[lat,lon]:[20,0],home?4:2);
+var map=L.map('map',{worldCopyJump:true,zoomControl:false}).setView(home?[lat,lon]:[20,0],home?4:2);
+L.control.zoom({position:'bottomright'}).addTo(map);
 L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,attribution:'&copy; OpenStreetMap'}).addTo(map);
 function fila(t,v,color){
   var d=document.createElement('div');
